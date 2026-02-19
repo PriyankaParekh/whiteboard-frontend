@@ -27,83 +27,20 @@ interface ToolbarButton {
 }
 
 const toolbarButtons: ToolbarButton[] = [
-  {
-    id: "select",
-    icon: <MousePointer2 size={20} />,
-    label: "Selection",
-  },
-  {
-    id: "rectangle",
-    icon: <Square size={20} />,
-    label: "Rectangle",
-  },
-  {
-    id: "circle",
-    icon: <Circle size={20} />,
-    label: "Circle",
-  },
-  {
-    id: "line",
-    icon: <Minus size={20} />,
-    label: "Line",
-  },
-  {
-    id: "arrow",
-    icon: <ArrowRight size={20} />,
-    label: "Arrow",
-  },
-  {
-    id: "polygon",
-    icon: <Hexagon size={20} />,
-    label: "Polygon",
-  },
-  {
-    id: "triangle",
-    icon: <Triangle size={20} />,
-    label: "Triangle",
-  },
-  {
-    id: "diamond",
-    icon: <Diamond size={20} />,
-    label: "Diamond",
-  },
-  {
-    id: "pencil",
-    icon: <Pen size={20} />,
-    label: "Pencil",
-  },
-  {
-    id: "text",
-    icon: <Type size={20} />,
-    label: "Text",
-  },
-  {
-    id: "sticky",
-    icon: <StickyNote size={20} />,
-    label: "Sticky Note",
-    divider: true,
-  },
-  {
-    id: "undo",
-    icon: <RotateCcw size={20} />,
-    label: "Undo",
-  },
-  {
-    id: "redo",
-    icon: <RotateCw size={20} />,
-    label: "Redo",
-  },
-  {
-    id: "delete",
-    icon: <Trash2 size={20} />,
-    label: "Delete",
-  },
-  {
-    id: "upload",
-    icon: <Upload size={20} />,
-    label: "Upload File",
-    divider: true,
-  },
+  { id: "select", icon: <MousePointer2 size={16} />, label: "Selection" },
+  { id: "rectangle", icon: <Square size={16} />, label: "Rectangle" },
+  { id: "circle", icon: <Circle size={16} />, label: "Circle" },
+  { id: "line", icon: <Minus size={16} />, label: "Line" },
+  { id: "arrow", icon: <ArrowRight size={16} />, label: "Arrow" },
+  { id: "polygon", icon: <Hexagon size={16} />, label: "Polygon" },
+  { id: "triangle", icon: <Triangle size={16} />, label: "Triangle" },
+  { id: "diamond", icon: <Diamond size={16} />, label: "Diamond" },
+  { id: "pencil", icon: <Pen size={16} />, label: "Pencil" },
+  { id: "text", icon: <Type size={16} />, label: "Text" },
+  { id: "sticky", icon: <StickyNote size={16} />, label: "Sticky Note", divider: true },
+  { id: "undo", icon: <RotateCcw size={16} />, label: "Undo" },
+  { id: "redo", icon: <RotateCw size={16} />, label: "Redo" },
+  { id: "upload", icon: <Upload size={16} />, label: "Upload File", divider: true },
 ];
 
 export default function Toolbar() {
@@ -130,7 +67,6 @@ export default function Toolbar() {
         deleteElement(selectedElementId);
       }
     } else if (toolId === "upload") {
-      // Upload file functionality - placeholder for now
       console.log("Upload file clicked");
     } else {
       setTool(toolId as ToolType);
@@ -142,12 +78,12 @@ export default function Toolbar() {
   const canDelete = selectedElementId !== null;
 
   return (
-    <div className="fixed left-6 top-1/2 -translate-y-1/2 z-50">
-      <div className="bg-white/80 backdrop-blur-md border border-slate-200/50 rounded-2xl shadow-lg p-3 flex flex-col gap-2">
+    <div className="fixed left-4 top-1/2 -translate-y-1/2 z-50">
+      <div className="bg-white/80 backdrop-blur-md border border-slate-200/50 rounded-xl shadow-lg p-1.5 flex flex-col gap-0.5">
         {toolbarButtons.map((button, index) => (
           <div key={button.id}>
             {button.divider && index > 0 && (
-              <div className="h-px bg-gradient-to-r from-slate-200/0 via-slate-300/30 to-slate-200/0 my-2" />
+              <div className="h-px bg-gradient-to-r from-slate-200/0 via-slate-300/30 to-slate-200/0 my-1" />
             )}
 
             <button
@@ -157,11 +93,9 @@ export default function Toolbar() {
                 (button.id === "redo" && !canRedo) ||
                 (button.id === "delete" && !canDelete)
               }
-              className={`relative w-11 h-11 rounded-xl transition-all duration-200 flex items-center justify-center font-medium text-sm
+              className={`relative w-8 h-8 rounded-lg transition-all duration-200 flex items-center justify-center font-medium text-sm
                 ${
-                  ["undo", "redo", "delete", "upload"].includes(
-                    button.id as string,
-                  )
+                  ["undo", "redo", "delete", "upload"].includes(button.id as string)
                     ? "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                     : selectedTool === button.id
                       ? "bg-blue-100 text-blue-700 shadow-md shadow-blue-200/50"
@@ -183,20 +117,11 @@ export default function Toolbar() {
               </span>
 
               {[
-                "select",
-                "rectangle",
-                "circle",
-                "line",
-                "arrow",
-                "polygon",
-                "triangle",
-                "diamond",
-                "pencil",
-                "text",
-                "sticky",
+                "select", "rectangle", "circle", "line", "arrow",
+                "polygon", "triangle", "diamond", "pencil", "text", "sticky",
               ].includes(button.id as string) &&
                 selectedTool === button.id && (
-                  <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-blue-400/20 to-transparent pointer-events-none" />
+                  <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-blue-400/20 to-transparent pointer-events-none" />
                 )}
             </button>
           </div>
@@ -212,9 +137,9 @@ export default function Toolbar() {
           transform: translateY(-50%);
           background: #1e293b;
           color: #fff;
-          font-size: 12px;
-          border-radius: 6px;
-          padding: 4px 10px;
+          font-size: 11px;
+          border-radius: 5px;
+          padding: 3px 8px;
           white-space: nowrap;
           z-index: 100;
           pointer-events: none;

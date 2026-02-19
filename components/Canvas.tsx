@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { createPortal } from "react-dom";
 import {
   Stage,
   Layer,
@@ -13,9 +12,8 @@ import {
   Text as KonvaText,
 } from "react-konva";
 import Konva from "konva";
-import { useStore, WhiteboardElement } from "../store/useStore";
+import { useStore, WhiteboardElement, ToolType } from "../store/useStore";
 
-// 🎨 Soft Color Palette
 const COLORS = {
   stroke: "#94a3b8",
   fill: "transparent",
@@ -25,37 +23,80 @@ const COLORS = {
   selectionFill: "rgba(59, 130, 246, 0.08)",
 };
 
+export const STICKY_NOTE_COLORS = [
+  { fill: "#fef3c7", stroke: "#fcd34d", name: "Yellow" },
+  { fill: "#dbeafe", stroke: "#93c5fd", name: "Blue" },
+  { fill: "#fce7f3", stroke: "#f9a8d4", name: "Pink" },
+  { fill: "#d1fae5", stroke: "#6ee7b7", name: "Green" },
+  { fill: "#e9d5ff", stroke: "#c084fc", name: "Purple" },
+];
+
+export const ELEMENT_STROKE_COLORS = [
+  { color: "#94a3b8", name: "Slate" },
+  { color: "#3b82f6", name: "Blue" },
+  { color: "#8b5cf6", name: "Purple" },
+  { color: "#ec4899", name: "Pink" },
+  { color: "#10b981", name: "Emerald" },
+  { color: "#f59e0b", name: "Amber" },
+  { color: "#ef4444", name: "Red" },
+  { color: "#1e293b", name: "Dark" },
+];
+
+export const ELEMENT_FILL_COLORS = [
+  { color: "transparent", name: "None" },
+  { color: "#f1f5f9", name: "Slate" },
+  { color: "#dbeafe", name: "Blue" },
+  { color: "#e9d5ff", name: "Purple" },
+  { color: "#fce7f3", name: "Pink" },
+  { color: "#d1fae5", name: "Green" },
+  { color: "#fef3c7", name: "Yellow" },
+  { color: "#fee2e2", name: "Red" },
+];
+
+export const CANVAS_BG_COLORS = [
+  { color: "#f1f5f9", name: "Slate", dotColor: "#cbd5e1" },
+  { color: "#fafafa", name: "White", dotColor: "#e4e4e7" },
+  { color: "#fef9f0", name: "Cream", dotColor: "#fcd34d" },
+  { color: "#f0f9ff", name: "Sky", dotColor: "#bae6fd" },
+  { color: "#fdf4ff", name: "Lavender", dotColor: "#e879f9" },
+  { color: "#f0fdf4", name: "Mint", dotColor: "#86efac" },
+];
+
+function getStickyNoteStrokeColor(fillColor: string): string {
+  const color = STICKY_NOTE_COLORS.find((c) => c.fill === fillColor);
+  return color ? color.stroke : "#fcd34d";
+}
+
 interface ShapeProps {
   element: WhiteboardElement;
   isSelected: boolean;
   onSelect: (id: string | null, additive?: boolean) => void;
   onTransformEnd: (id: string, newAttrs: Partial<WhiteboardElement>) => void;
+  setTool?: (tool: ToolType) => void;
+  onEditingChange?: (isEditing: boolean) => void;
 }
 
-// Safe shiftKey extraction — TouchEvent doesn't have shiftKey
 function getShiftKey(evt: MouseEvent | TouchEvent): boolean {
   return (evt as MouseEvent).shiftKey ?? false;
 }
 
-// helpers
 function computeArrowHead(
   a: { x: number; y: number },
   b: { x: number; y: number },
 ) {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
+  const dx = b.x - a.x,
+    dy = b.y - a.y;
   const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  const ux = dx / len;
-  const uy = dy / len;
+  const ux = dx / len,
+    uy = dy / len;
   const size = 12;
-  const hx = b.x - ux * size;
-  const hy = b.y - uy * size;
-  const px = -uy * (size * 0.6);
-  const py = ux * (size * 0.6);
+  const hx = b.x - ux * size,
+    hy = b.y - uy * size;
+  const px = -uy * (size * 0.6),
+    py = ux * (size * 0.6);
   return [b.x, b.y, hx + px, hy + py, hx - px, hy - py];
 }
 
-// ✏️ Rectangle Shape
 const RectShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
@@ -64,14 +105,12 @@ const RectShape: React.FC<ShapeProps> = ({
 }) => {
   const rectRef = useRef<Konva.Rect>(null);
   const trRef = useRef<Konva.Transformer>(null);
-
   useEffect(() => {
     if (isSelected && trRef.current && rectRef.current) {
       trRef.current.nodes([rectRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
   }, [isSelected]);
-
   return (
     <>
       {isSelected && (
@@ -98,12 +137,12 @@ const RectShape: React.FC<ShapeProps> = ({
         strokeWidth={element.strokeWidth || 2}
         fill={element.fillColor || COLORS.fill}
         cornerRadius={8}
+        draggable
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        draggable
-        onDragEnd={(e) => {
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() });
-        }}
+        onDragEnd={(e) =>
+          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
+        }
         onTransformEnd={() => {
           const node = rectRef.current;
           if (node) {
@@ -129,7 +168,6 @@ const RectShape: React.FC<ShapeProps> = ({
   );
 };
 
-// ⭕ Circle Shape
 const CircleShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
@@ -138,16 +176,13 @@ const CircleShape: React.FC<ShapeProps> = ({
 }) => {
   const circleRef = useRef<Konva.Circle>(null);
   const trRef = useRef<Konva.Transformer>(null);
-
   useEffect(() => {
     if (isSelected && trRef.current && circleRef.current) {
       trRef.current.nodes([circleRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
   }, [isSelected]);
-
   const radius = Math.max(element.width || 50, element.height || 50) / 2;
-
   return (
     <>
       {isSelected && (
@@ -170,12 +205,12 @@ const CircleShape: React.FC<ShapeProps> = ({
         stroke={element.strokeColor || COLORS.stroke}
         strokeWidth={element.strokeWidth || 2}
         fill={element.fillColor || COLORS.fill}
+        draggable
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        draggable
-        onDragEnd={(e) => {
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() });
-        }}
+        onDragEnd={(e) =>
+          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
+        }
         onTransformEnd={() => {
           const node = circleRef.current;
           if (node) {
@@ -201,7 +236,6 @@ const CircleShape: React.FC<ShapeProps> = ({
   );
 };
 
-// ➡️ Line Shape
 const LineShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
@@ -210,35 +244,37 @@ const LineShape: React.FC<ShapeProps> = ({
 }) => {
   const lineRef = useRef<Konva.Line>(null);
   const trRef = useRef<Konva.Transformer>(null);
-
   useEffect(() => {
     if (isSelected && trRef.current && lineRef.current) {
       trRef.current.nodes([lineRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
   }, [isSelected]);
-
   const points = element.points || [];
-
   return (
     <>
       <Line
         ref={lineRef}
-        points={points.flatMap((p: { x: number; y: number }) => [p.x, p.y])}
+        points={points.flatMap((p) => [p.x, p.y])}
         stroke={element.strokeColor || COLORS.stroke}
         strokeWidth={element.strokeWidth || 2}
         lineCap="round"
         lineJoin="round"
+        draggable
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        draggable
         onDragEnd={(e) => {
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() });
-        }}
-        onTransformEnd={() => {
           const node = lineRef.current;
-          if (node) {
-            onTransformEnd(element.id, { x: node.x(), y: node.y() });
+          if (node && element.points) {
+            const dx = node.x(),
+              dy = node.y();
+            onTransformEnd(element.id, {
+              x: 0,
+              y: 0,
+              points: element.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
+            });
+            node.x(0);
+            node.y(0);
           }
         }}
       />
@@ -253,7 +289,6 @@ const LineShape: React.FC<ShapeProps> = ({
   );
 };
 
-// ⬆️ Arrow Shape
 const ArrowShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
@@ -262,31 +297,28 @@ const ArrowShape: React.FC<ShapeProps> = ({
 }) => {
   const groupRef = useRef<Konva.Group>(null);
   const trRef = useRef<Konva.Transformer>(null);
-
   useEffect(() => {
     if (isSelected && trRef.current && groupRef.current) {
       trRef.current.nodes([groupRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
   }, [isSelected]);
-
   const points = element.points || [];
-
   return (
     <>
       <Group
         ref={groupRef}
         x={element.x}
         y={element.y}
+        draggable
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        draggable
-        onDragEnd={(e) => {
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() });
-        }}
+        onDragEnd={(e) =>
+          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
+        }
       >
         <Line
-          points={points.flatMap((p: { x: number; y: number }) => [p.x, p.y])}
+          points={points.flatMap((p) => [p.x, p.y])}
           stroke={element.strokeColor || COLORS.stroke}
           strokeWidth={element.strokeWidth || 2}
           lineCap="round"
@@ -315,7 +347,6 @@ const ArrowShape: React.FC<ShapeProps> = ({
   );
 };
 
-// △ Triangle Shape
 const TriangleShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
@@ -324,32 +355,16 @@ const TriangleShape: React.FC<ShapeProps> = ({
 }) => {
   const polyRef = useRef<Konva.Line>(null);
   const trRef = useRef<Konva.Transformer>(null);
-
   useEffect(() => {
     if (isSelected && trRef.current && polyRef.current) {
       trRef.current.nodes([polyRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
   }, [isSelected]);
-
-  const width = element.width || 100;
-  const height = element.height || 100;
-
+  const width = element.width || 100,
+    height = element.height || 100;
   return (
     <>
-      {isSelected && (
-        <Rect
-          x={element.x || 0}
-          y={element.y || 0}
-          width={width}
-          height={height}
-          stroke={COLORS.selection}
-          strokeWidth={2}
-          opacity={0.3}
-          dash={[5, 5]}
-          listening={false}
-        />
-      )}
       <Line
         closed
         ref={polyRef}
@@ -359,12 +374,12 @@ const TriangleShape: React.FC<ShapeProps> = ({
         stroke={element.strokeColor || COLORS.stroke}
         strokeWidth={element.strokeWidth || 2}
         fill={element.fillColor || COLORS.fill}
+        draggable
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        draggable
-        onDragEnd={(e) => {
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() });
-        }}
+        onDragEnd={(e) =>
+          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
+        }
         onTransformEnd={() => {
           const node = polyRef.current;
           if (node) {
@@ -390,7 +405,6 @@ const TriangleShape: React.FC<ShapeProps> = ({
   );
 };
 
-// ◆ Diamond Shape
 const DiamondShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
@@ -399,32 +413,16 @@ const DiamondShape: React.FC<ShapeProps> = ({
 }) => {
   const polyRef = useRef<Konva.Line>(null);
   const trRef = useRef<Konva.Transformer>(null);
-
   useEffect(() => {
     if (isSelected && trRef.current && polyRef.current) {
       trRef.current.nodes([polyRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
   }, [isSelected]);
-
-  const width = element.width || 100;
-  const height = element.height || 100;
-
+  const width = element.width || 100,
+    height = element.height || 100;
   return (
     <>
-      {isSelected && (
-        <Rect
-          x={element.x || 0}
-          y={element.y || 0}
-          width={width}
-          height={height}
-          stroke={COLORS.selection}
-          strokeWidth={2}
-          opacity={0.3}
-          dash={[5, 5]}
-          listening={false}
-        />
-      )}
       <Line
         closed
         ref={polyRef}
@@ -443,12 +441,12 @@ const DiamondShape: React.FC<ShapeProps> = ({
         stroke={element.strokeColor || COLORS.stroke}
         strokeWidth={element.strokeWidth || 2}
         fill={element.fillColor || COLORS.fill}
+        draggable
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        draggable
-        onDragEnd={(e) => {
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() });
-        }}
+        onDragEnd={(e) =>
+          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
+        }
         onTransformEnd={() => {
           const node = polyRef.current;
           if (node) {
@@ -474,8 +472,7 @@ const DiamondShape: React.FC<ShapeProps> = ({
   );
 };
 
-// ✏️ Pencil/Freehand Shape
-const PencilShape: React.FC<ShapeProps> = ({
+const PolygonShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
   onSelect,
@@ -483,31 +480,50 @@ const PencilShape: React.FC<ShapeProps> = ({
 }) => {
   const lineRef = useRef<Konva.Line>(null);
   const trRef = useRef<Konva.Transformer>(null);
-
   useEffect(() => {
     if (isSelected && trRef.current && lineRef.current) {
       trRef.current.nodes([lineRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
   }, [isSelected]);
-
   const points = element.points || [];
-
+  if (points.length === 0) return null;
+  const minX = Math.min(...points.map((p) => p.x));
+  const minY = Math.min(...points.map((p) => p.y));
+  const relativePoints = points.map((p) => [p.x - minX, p.y - minY]).flat();
   return (
     <>
       <Line
+        closed
         ref={lineRef}
-        points={points.flatMap((p: { x: number; y: number }) => [p.x, p.y])}
+        x={minX}
+        y={minY}
+        points={relativePoints}
         stroke={element.strokeColor || COLORS.stroke}
         strokeWidth={element.strokeWidth || 2}
-        lineCap="round"
-        lineJoin="round"
-        tension={0.5}
+        fill={element.fillColor || COLORS.fill}
+        draggable
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        draggable
         onDragEnd={(e) => {
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() });
+          const node = lineRef.current;
+          if (node && element.points) {
+            const dx = node.x() - minX,
+              dy = node.y() - minY;
+            const updatedPoints = element.points.map((p) => ({
+              x: p.x + dx,
+              y: p.y + dy,
+            }));
+            const newMinX = Math.min(...updatedPoints.map((p) => p.x));
+            const newMinY = Math.min(...updatedPoints.map((p) => p.y));
+            onTransformEnd(element.id, {
+              x: newMinX,
+              y: newMinY,
+              points: updatedPoints,
+            });
+            node.x(newMinX);
+            node.y(newMinY);
+          }
         }}
       />
       {isSelected && (
@@ -521,49 +537,139 @@ const PencilShape: React.FC<ShapeProps> = ({
   );
 };
 
-// 📝 Text Shape
-const TextShape: React.FC<ShapeProps> = ({
+const PencilShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
   onSelect,
   onTransformEnd,
 }) => {
-  const textRef = useRef<Konva.Text>(null);
+  const lineRef = useRef<Konva.Line>(null);
   const trRef = useRef<Konva.Transformer>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  // Store screen position in state (not derived from ref during render)
-  const [screenPos, setScreenPos] = useState({ x: 0, y: 0 });
-  const [screenScale, setScreenScale] = useState(1);
-  const lastClickTimeRef = useRef<number>(0);
-
   useEffect(() => {
-    if (isSelected && trRef.current && textRef.current) {
-      trRef.current.nodes([textRef.current]);
+    if (isSelected && trRef.current && lineRef.current) {
+      trRef.current.nodes([lineRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
   }, [isSelected]);
+  const points = element.points || [];
+  return (
+    <>
+      <Line
+        ref={lineRef}
+        points={points.flatMap((p) => [p.x, p.y])}
+        stroke={element.strokeColor || COLORS.stroke}
+        strokeWidth={element.strokeWidth || 2}
+        lineCap="round"
+        lineJoin="round"
+        tension={0.5}
+        draggable
+        onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
+        onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
+        onDragEnd={(e) => {
+          const node = lineRef.current;
+          if (node && element.points) {
+            const dx = node.x(),
+              dy = node.y();
+            onTransformEnd(element.id, {
+              x: 0,
+              y: 0,
+              points: element.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
+            });
+            node.x(0);
+            node.y(0);
+          }
+        }}
+      />
+      {isSelected && (
+        <Transformer
+          ref={trRef}
+          anchorSize={8}
+          borderStroke={COLORS.selection}
+        />
+      )}
+    </>
+  );
+};
 
-  // Compute screen position when editing starts, then focus
+const TextShape: React.FC<ShapeProps> = ({
+  element,
+  isSelected,
+  onSelect,
+  onTransformEnd,
+  setTool,
+  onEditingChange,
+}) => {
+  const textRef = useRef<Konva.Text>(null);
+  const trRef = useRef<Konva.Transformer>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const lastClickTimeRef = useRef<number>(0);
+  const isEditingRef = useRef(false);
+
   useEffect(() => {
-    if (!isEditing) return;
-    if (textRef.current) {
-      const stage = textRef.current.getStage();
-      if (stage) {
-        const stageBox = stage.container().getBoundingClientRect();
-        const absPos = textRef.current.getAbsolutePosition();
-        setScreenPos({
-          x: stageBox.left + absPos.x,
-          y: stageBox.top + absPos.y,
-        });
-        setScreenScale(stage.scaleX());
-      }
+    if (isSelected && trRef.current && textRef.current && !isEditing) {
+      trRef.current.nodes([textRef.current]);
+      trRef.current.getLayer()?.batchDraw();
     }
-    const timer = setTimeout(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }, 0);
-    return () => clearTimeout(timer);
+  }, [isSelected, isEditing]);
+
+  const finishEditing = useCallback(
+    (newText: string) => {
+      if (!isEditingRef.current) return;
+      isEditingRef.current = false;
+      setIsEditing(false);
+      onEditingChange?.(false);
+      onTransformEnd(element.id, { text: newText });
+      setTool?.("select");
+    },
+    [element.id, onTransformEnd, onEditingChange, setTool],
+  );
+
+  useEffect(() => {
+    if (!isEditing) {
+      if (inputRef.current) {
+        inputRef.current.remove();
+        inputRef.current = null;
+      }
+      return;
+    }
+    isEditingRef.current = true;
+    if (!textRef.current) return;
+    const stage = textRef.current.getStage();
+    if (!stage) return;
+    const stageBox = stage.container().getBoundingClientRect();
+    const absPos = textRef.current.getAbsolutePosition();
+    const screenScale = stage.scaleX();
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = element.text || "";
+    input.style.cssText = `position:fixed;left:${stageBox.left + absPos.x}px;top:${stageBox.top + absPos.y}px;font-size:${(element.fontSize || 28) * screenScale}px;padding:4px 8px;border:2px solid ${COLORS.selection};background-color:white;z-index:10000;min-width:200px;outline:none;font-family:inherit;box-shadow:0 4px 12px rgba(0,0,0,0.15);border-radius:4px;`;
+    input.addEventListener("mousedown", (e) => e.stopPropagation());
+    input.addEventListener("pointerdown", (e) => e.stopPropagation());
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        finishEditing(input.value);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        finishEditing(element.text || "");
+      }
+    });
+    input.addEventListener("blur", () => {
+      if (isEditingRef.current) finishEditing(input.value);
+    });
+    document.body.appendChild(input);
+    inputRef.current = input;
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 10);
+    return () => {
+      input.remove();
+      if (inputRef.current === input) inputRef.current = null;
+    };
   }, [isEditing]);
 
   const handleClick = useCallback(
@@ -575,16 +681,13 @@ const TextShape: React.FC<ShapeProps> = ({
         e.evt.preventDefault();
         e.evt.stopPropagation();
         setIsEditing(true);
-      } else {
-        onSelect(element.id, getShiftKey(e.evt));
+        onEditingChange?.(true);
+        return;
       }
+      onSelect(element.id, getShiftKey(e.evt));
     },
-    [element.id, onSelect],
+    [element.id, onSelect, onEditingChange],
   );
-
-  const handleBlur = useCallback(() => {
-    setIsEditing(false);
-  }, []);
 
   return (
     <>
@@ -595,12 +698,12 @@ const TextShape: React.FC<ShapeProps> = ({
         text={isEditing ? "" : element.text || "Double-click to edit"}
         fontSize={element.fontSize || 28}
         fill={element.strokeColor || COLORS.stroke}
+        draggable={!isEditing}
         onClick={handleClick}
         onTap={handleClick}
-        draggable={!isEditing}
-        onDragEnd={(e) => {
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() });
-        }}
+        onDragEnd={(e) =>
+          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
+        }
       />
       {isSelected && !isEditing && (
         <Transformer
@@ -609,110 +712,107 @@ const TextShape: React.FC<ShapeProps> = ({
           borderStroke={COLORS.selection}
         />
       )}
-      {/* Portal: render input outside Konva entirely, directly into document.body */}
-      {isEditing &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <input
-            ref={inputRef}
-            type="text"
-            defaultValue={element.text || ""}
-            onChange={(e) =>
-              onTransformEnd(element.id, { text: e.target.value })
-            }
-            onBlur={handleBlur}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Enter" || e.key === "Escape") handleBlur();
-            }}
-            style={{
-              position: "fixed",
-              left: `${screenPos.x}px`,
-              top: `${screenPos.y}px`,
-              fontSize: `${(element.fontSize || 28) * screenScale}px`,
-              padding: "4px 8px",
-              border: `2px solid ${COLORS.selection}`,
-              backgroundColor: "white",
-              zIndex: 10000,
-              minWidth: "200px",
-              outline: "none",
-              fontFamily: "inherit",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-            }}
-          />,
-          document.body,
-        )}
     </>
   );
 };
 
-// 📌 Sticky Note Shape
 const StickyShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
   onSelect,
   onTransformEnd,
+  setTool,
+  onEditingChange,
 }) => {
   const groupRef = useRef<Konva.Group>(null);
   const trRef = useRef<Konva.Transformer>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  // Store screen position in state (not derived from ref during render)
-  const [screenPos, setScreenPos] = useState({ x: 0, y: 0 });
-  const [screenScale, setScreenScale] = useState(1);
   const lastClickTimeRef = useRef<number>(0);
+  const isEditingRef = useRef(false);
+  const width = element.width || 180,
+    height = element.height || 180;
 
   useEffect(() => {
-    if (isSelected && trRef.current && groupRef.current) {
+    if (isSelected && trRef.current && groupRef.current && !isEditing) {
       trRef.current.nodes([groupRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [isSelected]);
+  }, [isSelected, isEditing]);
 
-  // Compute screen position when editing starts, then focus
+  const finishEditing = useCallback(
+    (newText: string) => {
+      if (!isEditingRef.current) return;
+      isEditingRef.current = false;
+      setIsEditing(false);
+      onEditingChange?.(false);
+      onTransformEnd(element.id, { text: newText });
+      setTool?.("select");
+    },
+    [element.id, onTransformEnd, onEditingChange, setTool],
+  );
+
   useEffect(() => {
-    if (!isEditing) return;
-    if (groupRef.current) {
-      const stage = groupRef.current.getStage();
-      if (stage) {
-        const stageBox = stage.container().getBoundingClientRect();
-        const absPos = groupRef.current.getAbsolutePosition();
-        setScreenPos({
-          x: stageBox.left + absPos.x,
-          y: stageBox.top + absPos.y,
-        });
-        setScreenScale(stage.scaleX());
+    if (!isEditing) {
+      if (textareaRef.current) {
+        textareaRef.current.remove();
+        textareaRef.current = null;
       }
+      return;
     }
-    const timer = setTimeout(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.select();
-    }, 0);
-    return () => clearTimeout(timer);
+    isEditingRef.current = true;
+    if (!groupRef.current) return;
+    const stage = groupRef.current.getStage();
+    if (!stage) return;
+    const stageBox = stage.container().getBoundingClientRect();
+    const absPos = groupRef.current.getAbsolutePosition();
+    const screenScale = stage.scaleX();
+    const textarea = document.createElement("textarea");
+    textarea.value = element.text || "";
+    textarea.style.cssText = `position:fixed;left:${stageBox.left + absPos.x}px;top:${stageBox.top + absPos.y}px;width:${width * screenScale}px;height:${height * screenScale}px;font-size:${(element.fontSize || 20) * screenScale}px;padding:10px;border:2px solid ${COLORS.selection};background-color:${element.fillColor || "#fef3c7"};z-index:10000;font-family:inherit;resize:none;outline:none;box-shadow:0 4px 12px rgba(0,0,0,0.15);box-sizing:border-box;border-radius:4px;`;
+    textarea.addEventListener("mousedown", (e) => e.stopPropagation());
+    textarea.addEventListener("pointerdown", (e) => e.stopPropagation());
+    textarea.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        finishEditing(textarea.value);
+      } else if (e.key === "Escape") {
+        e.stopPropagation();
+        finishEditing(element.text || "");
+      }
+    });
+    textarea.addEventListener("blur", () => {
+      if (isEditingRef.current) finishEditing(textarea.value);
+    });
+    document.body.appendChild(textarea);
+    textareaRef.current = textarea;
+    setTimeout(() => {
+      textarea.focus();
+      textarea.select();
+    }, 10);
+    return () => {
+      textarea.remove();
+      if (textareaRef.current === textarea) textareaRef.current = null;
+    };
   }, [isEditing]);
 
   const handleClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-      e.evt.preventDefault();
-      e.evt.stopPropagation();
       const now = Date.now();
-      const isDoubleClick = now - lastClickTimeRef.current < 300;
+      const isDoubleClick = now - lastClickTimeRef.current < 400;
       lastClickTimeRef.current = now;
       if (isDoubleClick && !isEditing) {
+        e.evt.preventDefault();
+        e.evt.stopPropagation();
         setIsEditing(true);
-      } else if (!isDoubleClick && !isEditing) {
-        onSelect(element.id, getShiftKey(e.evt));
+        onEditingChange?.(true);
+        return;
       }
+      if (!isEditing) onSelect(element.id, getShiftKey(e.evt));
     },
-    [element.id, onSelect, isEditing],
+    [element.id, onSelect, isEditing, onEditingChange],
   );
-
-  const handleBlur = useCallback(() => {
-    setIsEditing(false);
-  }, []);
-
-  const width = element.width || 180;
-  const height = element.height || 180;
 
   return (
     <>
@@ -720,12 +820,12 @@ const StickyShape: React.FC<ShapeProps> = ({
         ref={groupRef}
         x={element.x}
         y={element.y}
+        draggable={!isEditing}
         onClick={handleClick}
         onTap={handleClick}
-        draggable={!isEditing}
-        onDragEnd={(e) => {
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() });
-        }}
+        onDragEnd={(e) =>
+          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
+        }
       >
         <Rect
           x={0}
@@ -756,48 +856,452 @@ const StickyShape: React.FC<ShapeProps> = ({
           borderStroke={COLORS.selection}
         />
       )}
-      {/* Portal: render textarea outside Konva entirely, directly into document.body */}
-      {isEditing &&
-        typeof document !== "undefined" &&
-        createPortal(
-          <textarea
-            ref={textareaRef}
-            defaultValue={element.text || ""}
-            onChange={(e) =>
-              onTransformEnd(element.id, { text: e.target.value })
-            }
-            onBlur={handleBlur}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Escape") handleBlur();
-            }}
-            style={{
-              position: "fixed",
-              left: `${screenPos.x}px`,
-              top: `${screenPos.y}px`,
-              width: `${width * screenScale}px`,
-              height: `${height * screenScale}px`,
-              fontSize: `${(element.fontSize || 20) * screenScale}px`,
-              padding: "10px",
-              border: `2px solid ${COLORS.selection}`,
-              backgroundColor: element.fillColor || "#fef3c7",
-              zIndex: 10000,
-              fontFamily: "inherit",
-              resize: "none",
-              outline: "none",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-              boxSizing: "border-box",
-            }}
-          />,
-          document.body,
-        )}
     </>
   );
 };
 
-// 🎯 Main Canvas Component
+// ─── Bottom-Right Control Panel ───────────────────────────────────────────────
+interface ControlPanelProps {
+  scale: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onResetZoom: () => void;
+  canvasBg: (typeof CANVAS_BG_COLORS)[0];
+  onBgChange: (bg: (typeof CANVAS_BG_COLORS)[0]) => void;
+  strokeColor: string;
+  onStrokeColorChange: (color: string) => void;
+  fillColor: string;
+  onFillColorChange: (color: string) => void;
+}
+
+const ControlPanel: React.FC<ControlPanelProps> = ({
+  scale,
+  onZoomIn,
+  onZoomOut,
+  onResetZoom,
+  canvasBg,
+  onBgChange,
+  strokeColor,
+  onStrokeColorChange,
+  fillColor,
+  onFillColorChange,
+}) => {
+  const [activePopup, setActivePopup] = useState<
+    "stroke" | "fill" | "bg" | null
+  >(null);
+
+  const panelStyle: React.CSSProperties = {
+    background: "rgba(255,255,255,0.88)",
+    backdropFilter: "blur(16px)",
+    WebkitBackdropFilter: "blur(16px)",
+    border: "1px solid rgba(148,163,184,0.22)",
+    borderRadius: 14,
+    boxShadow: "0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)",
+  };
+
+  const popupStyle: React.CSSProperties = {
+    ...panelStyle,
+    position: "absolute",
+    bottom: "calc(100% + 8px)",
+    right: 0,
+    padding: 8,
+    display: "grid",
+    gap: 5,
+    zIndex: 400,
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 20,
+        right: 20,
+        zIndex: 300,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-end",
+        gap: 8,
+        fontFamily: "'DM Sans','Segoe UI',sans-serif",
+      }}
+    >
+      {/* Help card */}
+      <div
+        style={{
+          ...panelStyle,
+          padding: "10px 14px",
+          fontSize: 11,
+          color: "#64748b",
+          lineHeight: 1.75,
+          minWidth: 192,
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 700,
+            fontSize: 10,
+            color: "#94a3b8",
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            marginBottom: 5,
+          }}
+        >
+          Controls
+        </div>
+        {[
+          ["Select", "Click shapes"],
+          ["Multi-select", "Shift+Click / Drag"],
+          ["Pan", "Ctrl/Cmd + Drag"],
+          ["Edit text", "Double-click"],
+          ["Delete", "Del / Backspace"],
+          ["Zoom", "Scroll  or  +  /  −"],
+        ].map(([k, v]) => (
+          <div
+            key={k}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 10,
+            }}
+          >
+            <span style={{ fontWeight: 600, color: "#475569" }}>{k}</span>
+            <span style={{ color: "#94a3b8", textAlign: "right" }}>{v}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Color + Zoom bar */}
+      <div
+        style={{
+          ...panelStyle,
+          padding: "7px 10px",
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+        }}
+      >
+        {/* Stroke swatch */}
+        <div style={{ position: "relative" }}>
+          <button
+            title="Stroke color"
+            onMouseEnter={() => setActivePopup("stroke")}
+            onMouseLeave={() => setActivePopup(null)}
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 7,
+              border: "2.5px solid white",
+              outline: `2px solid ${strokeColor === "transparent" ? "#cbd5e1" : strokeColor}`,
+              background: strokeColor,
+              cursor: "pointer",
+              transition: "transform 0.13s",
+              display: "block",
+            }}
+            onMouseOver={(e) =>
+              (e.currentTarget.style.transform = "scale(1.18)")
+            }
+            onMouseOut={(e) => (e.currentTarget.style.transform = "scale(1)")}
+          />
+          {activePopup === "stroke" && (
+            <div
+              onMouseEnter={() => setActivePopup("stroke")}
+              onMouseLeave={() => setActivePopup(null)}
+              style={{
+                ...popupStyle,
+                gridTemplateColumns: "repeat(4,1fr)",
+                width: 120,
+              }}
+            >
+              <div
+                style={{
+                  gridColumn: "1/-1",
+                  fontSize: 9,
+                  fontWeight: 700,
+                  color: "#94a3b8",
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  marginBottom: 1,
+                }}
+              >
+                Stroke
+              </div>
+              {ELEMENT_STROKE_COLORS.map((c) => (
+                <button
+                  key={c.color}
+                  title={c.name}
+                  onClick={() => onStrokeColorChange(c.color)}
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 5,
+                    background: c.color,
+                    border:
+                      strokeColor === c.color
+                        ? "2.5px solid #3b82f6"
+                        : "2px solid rgba(0,0,0,0.08)",
+                    cursor: "pointer",
+                    transition: "transform 0.1s",
+                    transform:
+                      strokeColor === c.color ? "scale(1.22)" : "scale(1)",
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Fill swatch */}
+        <div style={{ position: "relative" }}>
+          <button
+            title="Fill color"
+            onMouseEnter={() => setActivePopup("fill")}
+            onMouseLeave={() => setActivePopup(null)}
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 7,
+              border: "2.5px solid white",
+              outline: "2px solid #cbd5e1",
+              background:
+                fillColor === "transparent"
+                  ? "linear-gradient(135deg,#fff 42%,#f1f5f9 42%)"
+                  : fillColor,
+              cursor: "pointer",
+              transition: "transform 0.13s",
+              display: "block",
+            }}
+            onMouseOver={(e) =>
+              (e.currentTarget.style.transform = "scale(1.18)")
+            }
+            onMouseOut={(e) => (e.currentTarget.style.transform = "scale(1)")}
+          />
+          {activePopup === "fill" && (
+            <div
+              onMouseEnter={() => setActivePopup("fill")}
+              onMouseLeave={() => setActivePopup(null)}
+              style={{
+                ...popupStyle,
+                gridTemplateColumns: "repeat(4,1fr)",
+                width: 120,
+              }}
+            >
+              <div
+                style={{
+                  gridColumn: "1/-1",
+                  fontSize: 9,
+                  fontWeight: 700,
+                  color: "#94a3b8",
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  marginBottom: 1,
+                }}
+              >
+                Fill
+              </div>
+              {ELEMENT_FILL_COLORS.map((c) => (
+                <button
+                  key={c.color}
+                  title={c.name}
+                  onClick={() => onFillColorChange(c.color)}
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 5,
+                    background:
+                      c.color === "transparent"
+                        ? "linear-gradient(135deg,#fff 42%,#f1f5f9 42%)"
+                        : c.color,
+                    border:
+                      fillColor === c.color
+                        ? "2.5px solid #3b82f6"
+                        : "2px solid rgba(0,0,0,0.08)",
+                    cursor: "pointer",
+                    transition: "transform 0.1s",
+                    transform:
+                      fillColor === c.color ? "scale(1.22)" : "scale(1)",
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* BG swatch */}
+        <div style={{ position: "relative" }}>
+          <button
+            title="Canvas background"
+            onMouseEnter={() => setActivePopup("bg")}
+            onMouseLeave={() => setActivePopup(null)}
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 7,
+              border: "2.5px solid white",
+              outline: "2px solid #cbd5e1",
+              backgroundImage: `radial-gradient(circle, ${canvasBg.dotColor} 1.5px, ${canvasBg.color} 1.5px)`,
+              backgroundSize: "7px 7px",
+              cursor: "pointer",
+              transition: "transform 0.13s",
+              display: "block",
+            }}
+            onMouseOver={(e) =>
+              (e.currentTarget.style.transform = "scale(1.18)")
+            }
+            onMouseOut={(e) => (e.currentTarget.style.transform = "scale(1)")}
+          />
+          {activePopup === "bg" && (
+            <div
+              onMouseEnter={() => setActivePopup("bg")}
+              onMouseLeave={() => setActivePopup(null)}
+              style={{
+                ...popupStyle,
+                gridTemplateColumns: "repeat(3,1fr)",
+                width: 96,
+              }}
+            >
+              <div
+                style={{
+                  gridColumn: "1/-1",
+                  fontSize: 9,
+                  fontWeight: 700,
+                  color: "#94a3b8",
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  marginBottom: 1,
+                }}
+              >
+                Canvas
+              </div>
+              {CANVAS_BG_COLORS.map((bg) => (
+                <button
+                  key={bg.color}
+                  title={bg.name}
+                  onClick={() => onBgChange(bg)}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 6,
+                    backgroundImage: `radial-gradient(circle, ${bg.dotColor} 1.5px, ${bg.color} 1.5px)`,
+                    backgroundSize: "7px 7px",
+                    border:
+                      canvasBg.color === bg.color
+                        ? "2.5px solid #3b82f6"
+                        : "2px solid rgba(0,0,0,0.08)",
+                    cursor: "pointer",
+                    transition: "transform 0.1s",
+                    transform:
+                      canvasBg.color === bg.color ? "scale(1.18)" : "scale(1)",
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* divider */}
+        <div
+          style={{
+            width: 1,
+            height: 18,
+            background: "#e2e8f0",
+            margin: "0 1px",
+          }}
+        />
+
+        {/* Zoom out */}
+        <button
+          onClick={onZoomOut}
+          title="Zoom out (−)"
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 7,
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#64748b",
+            fontSize: 15,
+            fontWeight: 600,
+            lineHeight: 1,
+            transition: "background 0.1s,color 0.1s",
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.background = "#f1f5f9";
+            e.currentTarget.style.color = "#1e293b";
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "#64748b";
+          }}
+        >
+          −
+        </button>
+
+        {/* Zoom % */}
+        <button
+          onClick={onResetZoom}
+          title="Reset zoom (Ctrl+0)"
+          style={{
+            minWidth: 38,
+            height: 22,
+            borderRadius: 6,
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            color: "#475569",
+            fontSize: 10,
+            fontWeight: 700,
+            fontFamily: "monospace",
+            letterSpacing: "0.02em",
+            transition: "background 0.1s",
+            padding: "0 3px",
+          }}
+          onMouseOver={(e) => (e.currentTarget.style.background = "#f1f5f9")}
+          onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
+        >
+          {Math.round(scale * 100)}%
+        </button>
+
+        {/* Zoom in */}
+        <button
+          onClick={onZoomIn}
+          title="Zoom in (+)"
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 7,
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#64748b",
+            fontSize: 15,
+            fontWeight: 600,
+            lineHeight: 1,
+            transition: "background 0.1s,color 0.1s",
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.background = "#f1f5f9";
+            e.currentTarget.style.color = "#1e293b";
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "#64748b";
+          }}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ─── Main Canvas ──────────────────────────────────────────────────────────────
 export default function Canvas() {
-  const storeValues = useStore();
   const {
     elements,
     selectedTool,
@@ -806,18 +1310,21 @@ export default function Canvas() {
     addElement,
     updateElement,
     selectElement,
+    selectElements,
     deleteElement,
     deleteSelected,
-  } = storeValues;
-
-  // setSelectedTool is optional — only use if it exists in the store
-  const setSelectedTool = (storeValues as unknown as Record<string, unknown>)
-    .setSelectedTool as ((tool: string) => void) | undefined;
+    setTool,
+    stickyNoteColor,
+    elementStrokeColor,
+    elementFillColor,
+    setStickyNoteColor,
+    setElementStrokeColor,
+    setElementFillColor,
+  } = useStore();
 
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
-  // Store the drawing start position separately so setCurrentElement functional updates work
   const drawStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const [isDrawing, setIsDrawing] = useState(false);
@@ -826,8 +1333,19 @@ export default function Canvas() {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDraggingStage, setIsDraggingStage] = useState(false);
+  const [selectionBox, setSelectionBox] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [canvasBg, setCanvasBg] = useState(CANVAS_BG_COLORS[0]);
 
-  // 🖱️ Get Mouse Position adjusted for pan/zoom
+  const isAnyTextEditingRef = useRef(false);
+  const handleEditingChange = useCallback((editing: boolean) => {
+    isAnyTextEditingRef.current = editing;
+  }, []);
+
   const getMousePos = useCallback((): { x: number; y: number } => {
     const stage = stageRef.current;
     if (!stage) return { x: 0, y: 0 };
@@ -841,25 +1359,99 @@ export default function Canvas() {
     };
   }, []);
 
-  // 🎯 Handle Mouse Down
+  const applyZoom = useCallback(
+    (newScaleRaw: number) => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      const newScale = Math.max(0.3, Math.min(4, newScaleRaw));
+      const pointer = stage.getPointerPosition() ?? {
+        x: stage.width() / 2,
+        y: stage.height() / 2,
+      };
+      const oldScale = scale;
+      const mousePointTo = {
+        x: pointer.x / oldScale - stage.x() / oldScale,
+        y: pointer.y / oldScale - stage.y() / oldScale,
+      };
+      const newPos = {
+        x: -(mousePointTo.x - pointer.x / newScale) * newScale,
+        y: -(mousePointTo.y - pointer.y / newScale) * newScale,
+      };
+      setScale(newScale);
+      setPosition(newPos);
+      stage.scale({ x: newScale, y: newScale });
+      stage.position(newPos);
+      stage.batchDraw();
+    },
+    [scale],
+  );
+
+  const handleZoomIn = useCallback(
+    () => applyZoom(scale + 0.15),
+    [scale, applyZoom],
+  );
+  const handleZoomOut = useCallback(
+    () => applyZoom(scale - 0.15),
+    [scale, applyZoom],
+  );
+  const handleResetZoom = useCallback(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    setScale(1);
+    setPosition({ x: 0, y: 0 });
+    stage.scale({ x: 1, y: 1 });
+    stage.position({ x: 0, y: 0 });
+    stage.batchDraw();
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const s = useStore.getState();
+        if (s.selectedElementIds.length > 0) s.deleteSelected();
+        else if (s.selectedElementId) s.deleteElement(s.selectedElementId);
+      }
+      if ((e.key === "=" || e.key === "+") && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        handleZoomIn();
+      }
+      if (e.key === "-" && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        handleZoomOut();
+      }
+      if (e.key === "0" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        handleResetZoom();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleZoomIn, handleZoomOut, handleResetZoom]);
+
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
+      if (isAnyTextEditingRef.current) return;
       if (e.evt.ctrlKey || e.evt.metaKey) {
         setIsDraggingStage(true);
         lastPosRef.current = stageRef.current?.getPointerPosition() ?? null;
         e.evt.preventDefault();
         return;
       }
-
       if (selectedTool === "select") {
         if (e.target !== e.target.getStage()) return;
-        selectElement(null);
+        const pos = getMousePos();
+        drawStartRef.current = pos;
+        setSelectionBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
+        setIsDrawing(true);
         return;
       }
-
       const pos = getMousePos();
       drawStartRef.current = pos;
-
       if (selectedTool === "rectangle") {
         setCurrentElement({
           id: `rect-${Date.now()}`,
@@ -868,8 +1460,8 @@ export default function Canvas() {
           y: pos.y,
           width: 0,
           height: 0,
-          strokeColor: COLORS.stroke,
-          fillColor: COLORS.fill,
+          strokeColor: elementStrokeColor,
+          fillColor: elementFillColor,
           strokeWidth: 2,
         });
         setIsDrawing(true);
@@ -881,8 +1473,8 @@ export default function Canvas() {
           y: pos.y,
           width: 0,
           height: 0,
-          strokeColor: COLORS.stroke,
-          fillColor: COLORS.fill,
+          strokeColor: elementStrokeColor,
+          fillColor: elementFillColor,
           strokeWidth: 2,
         });
         setIsDrawing(true);
@@ -896,7 +1488,7 @@ export default function Canvas() {
             { x: pos.x, y: pos.y },
             { x: pos.x, y: pos.y },
           ],
-          strokeColor: COLORS.stroke,
+          strokeColor: elementStrokeColor,
           strokeWidth: 2,
         });
         setIsDrawing(true);
@@ -908,8 +1500,8 @@ export default function Canvas() {
           y: pos.y,
           width: 0,
           height: 0,
-          strokeColor: COLORS.stroke,
-          fillColor: COLORS.fill,
+          strokeColor: elementStrokeColor,
+          fillColor: elementFillColor,
           strokeWidth: 2,
         });
         setIsDrawing(true);
@@ -921,8 +1513,8 @@ export default function Canvas() {
           y: pos.y,
           width: 0,
           height: 0,
-          strokeColor: COLORS.stroke,
-          fillColor: COLORS.fill,
+          strokeColor: elementStrokeColor,
+          fillColor: elementFillColor,
           strokeWidth: 2,
         });
         setIsDrawing(true);
@@ -934,10 +1526,9 @@ export default function Canvas() {
           y: pos.y,
           width: 0,
           height: 0,
-          strokeColor: COLORS.stroke,
-          fillColor: COLORS.fill,
+          strokeColor: elementStrokeColor,
+          fillColor: elementFillColor,
           strokeWidth: 2,
-          sides: 6,
         } as Partial<WhiteboardElement>);
         setIsDrawing(true);
       } else if (selectedTool === "pencil") {
@@ -947,46 +1538,54 @@ export default function Canvas() {
           x: 0,
           y: 0,
           points: [{ x: pos.x, y: pos.y }],
-          strokeColor: COLORS.stroke,
+          strokeColor: elementStrokeColor,
           strokeWidth: 2,
         });
         setIsDrawing(true);
       } else if (selectedTool === "text") {
         if (e.target !== e.target.getStage()) return;
-        const newEl: WhiteboardElement = {
+        const newEl = {
           id: `text-${Date.now()}`,
-          type: "text",
+          type: "text" as const,
           x: pos.x,
           y: pos.y,
           text: "Text",
           fontSize: 28,
-          strokeColor: COLORS.stroke,
+          strokeColor: elementStrokeColor,
         } as WhiteboardElement;
         addElement(newEl);
         selectElement(newEl.id);
-        setSelectedTool?.("select");
+        setTool("select");
       } else if (selectedTool === "sticky") {
         if (e.target !== e.target.getStage()) return;
-        const newEl: WhiteboardElement = {
+        const newEl = {
           id: `sticky-${Date.now()}`,
-          type: "sticky",
+          type: "sticky" as const,
           x: pos.x,
           y: pos.y,
           width: 150,
           height: 150,
           text: "Note",
-          fillColor: "#fef3c7",
-          strokeColor: "#fcd34d",
+          fillColor: stickyNoteColor,
+          strokeColor: getStickyNoteStrokeColor(stickyNoteColor),
         } as WhiteboardElement;
         addElement(newEl);
         selectElement(newEl.id);
-        setSelectedTool?.("select");
+        setTool("select");
       }
     },
-    [selectedTool, addElement, selectElement, setSelectedTool, getMousePos],
+    [
+      selectedTool,
+      addElement,
+      selectElement,
+      setTool,
+      getMousePos,
+      elementStrokeColor,
+      elementFillColor,
+      stickyNoteColor,
+    ],
   );
 
-  // 🖱️ Handle Mouse Move
   const handleMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       if (isDraggingStage && (e.evt.ctrlKey || e.evt.metaKey)) {
@@ -1005,29 +1604,35 @@ export default function Canvas() {
         lastPosRef.current = pointerPos;
         return;
       }
-
-      if (!isDrawing || !currentElement) return;
-
+      if (!isDrawing) return;
       const pos = getMousePos();
       const start = drawStartRef.current;
-
-      if (
-        selectedTool === "rectangle" ||
-        selectedTool === "circle" ||
-        selectedTool === "triangle" ||
-        selectedTool === "diamond" ||
-        selectedTool === "polygon"
-      ) {
-        setCurrentElement((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            x: Math.min(pos.x, start.x),
-            y: Math.min(pos.y, start.y),
-            width: Math.abs(pos.x - start.x),
-            height: Math.abs(pos.y - start.y),
-          };
+      if (selectedTool === "select") {
+        setSelectionBox({
+          x: Math.min(pos.x, start.x),
+          y: Math.min(pos.y, start.y),
+          width: Math.abs(pos.x - start.x),
+          height: Math.abs(pos.y - start.y),
         });
+        return;
+      }
+      if (!currentElement) return;
+      if (
+        ["rectangle", "circle", "triangle", "diamond", "polygon"].includes(
+          selectedTool,
+        )
+      ) {
+        setCurrentElement((prev) =>
+          prev
+            ? {
+                ...prev,
+                x: Math.min(pos.x, start.x),
+                y: Math.min(pos.y, start.y),
+                width: Math.abs(pos.x - start.x),
+                height: Math.abs(pos.y - start.y),
+              }
+            : prev,
+        );
       } else if (selectedTool === "line" || selectedTool === "arrow") {
         setCurrentElement((prev) => {
           if (!prev) return prev;
@@ -1036,13 +1641,14 @@ export default function Canvas() {
           return { ...prev, points: pts };
         });
       } else if (selectedTool === "pencil") {
-        setCurrentElement((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            points: [...(prev.points || []), { x: pos.x, y: pos.y }],
-          };
-        });
+        setCurrentElement((prev) =>
+          prev
+            ? {
+                ...prev,
+                points: [...(prev.points || []), { x: pos.x, y: pos.y }],
+              }
+            : prev,
+        );
       }
     },
     [
@@ -1055,43 +1661,86 @@ export default function Canvas() {
     ],
   );
 
-  // 🖱️ Handle Mouse Up
+  const elementIntersectsBox = useCallback(
+    (
+      element: WhiteboardElement,
+      box: { x: number; y: number; width: number; height: number },
+    ): boolean => {
+      const boxRight = box.x + box.width,
+        boxBottom = box.y + box.height;
+      if (element.points && element.points.length > 0) {
+        for (const point of element.points) {
+          if (
+            point.x >= box.x &&
+            point.x <= boxRight &&
+            point.y >= box.y &&
+            point.y <= boxBottom
+          )
+            return true;
+        }
+        const minX = Math.min(...element.points.map((p) => p.x)),
+          maxX = Math.max(...element.points.map((p) => p.x));
+        const minY = Math.min(...element.points.map((p) => p.y)),
+          maxY = Math.max(...element.points.map((p) => p.y));
+        return !(
+          boxRight < minX ||
+          box.x > maxX ||
+          boxBottom < minY ||
+          box.y > maxY
+        );
+      }
+      const elRight = (element.x || 0) + (element.width || 0),
+        elBottom = (element.y || 0) + (element.height || 0);
+      return !(
+        boxRight < (element.x || 0) ||
+        box.x > elRight ||
+        boxBottom < (element.y || 0) ||
+        box.y > elBottom
+      );
+    },
+    [],
+  );
+
   const handleMouseUp = useCallback(() => {
     if (isDraggingStage) {
       setIsDraggingStage(false);
       lastPosRef.current = null;
       return;
     }
-
-    if (!isDrawing || !currentElement) return;
-
-    if (
-      currentElement.type === "rectangle" ||
-      currentElement.type === "circle" ||
-      currentElement.type === "triangle" ||
-      currentElement.type === "diamond"
-    ) {
-      if ((currentElement.width || 0) > 5 && (currentElement.height || 0) > 5) {
-        addElement(currentElement as WhiteboardElement);
+    if (selectedTool === "select" && selectionBox) {
+      if (selectionBox.width > 5 || selectionBox.height > 5) {
+        const selectedIds = elements
+          .filter((el) => elementIntersectsBox(el, selectionBox))
+          .map((el) => el.id);
+        if (selectedIds.length > 0) selectElements(selectedIds);
+        else selectElement(null);
+      } else {
+        selectElement(null);
       }
+      setSelectionBox(null);
+      setIsDrawing(false);
+      return;
+    }
+    if (!isDrawing || !currentElement) return;
+    if (
+      ["rectangle", "circle", "triangle", "diamond"].includes(
+        currentElement.type || "",
+      )
+    ) {
+      if ((currentElement.width || 0) > 5 && (currentElement.height || 0) > 5)
+        addElement(currentElement as WhiteboardElement);
     } else if (
-      currentElement.type === "line" ||
-      currentElement.type === "arrow" ||
-      currentElement.type === "pencil"
+      ["line", "arrow", "pencil"].includes(currentElement.type || "")
     ) {
       addElement(currentElement as WhiteboardElement);
     } else if (currentElement.type === "polygon") {
-      const sides =
-        (currentElement as Partial<WhiteboardElement> & { sides?: number })
-          .sides || 6;
-      const w = currentElement.width || 0;
-      const h = currentElement.height || 0;
-      const cx = (currentElement.x || 0) + w / 2;
-      const cy = (currentElement.y || 0) + h / 2;
-      const r = Math.min(w, h) / 2;
-      const points: { x: number; y: number }[] = Array.from({
-        length: sides,
-      }).map((_, i) => {
+      const sides = (currentElement as any).sides || 6;
+      const w = currentElement.width || 0,
+        h = currentElement.height || 0;
+      const cx = (currentElement.x || 0) + w / 2,
+        cy = (currentElement.y || 0) + h / 2,
+        r = Math.min(w, h) / 2;
+      const points = Array.from({ length: sides }).map((_, i) => {
         const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
         return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
       });
@@ -1106,100 +1755,51 @@ export default function Canvas() {
         strokeWidth: currentElement.strokeWidth,
       } as WhiteboardElement);
     }
-
     setIsDrawing(false);
     setCurrentElement(null);
-  }, [isDraggingStage, isDrawing, currentElement, addElement]);
+  }, [
+    isDraggingStage,
+    isDrawing,
+    currentElement,
+    selectedTool,
+    selectionBox,
+    elements,
+    elementIntersectsBox,
+    selectElement,
+    selectElements,
+    addElement,
+  ]);
 
-  // 🔍 Handle Zoom
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
       e.evt.preventDefault();
-      const stage = stageRef.current;
-      if (!stage) return;
-      const oldScale = scale;
-      const pointer = stage.getPointerPosition();
-      if (!pointer) return;
       const direction = e.evt.deltaY > 0 ? -1 : 1;
-      const newScale = Math.max(0.5, Math.min(3, oldScale + direction * 0.1));
-      const mousePointTo = {
-        x: pointer.x / oldScale - stage.x() / oldScale,
-        y: pointer.y / oldScale - stage.y() / oldScale,
-      };
-      const newPos = {
-        x: -(mousePointTo.x - pointer.x / newScale) * newScale,
-        y: -(mousePointTo.y - pointer.y / newScale) * newScale,
-      };
-      setScale(newScale);
-      setPosition(newPos);
-      stage.scale({ x: newScale, y: newScale });
-      stage.position(newPos);
-      stage.batchDraw();
+      applyZoom(scale + direction * 0.1);
     },
-    [scale],
+    [scale, applyZoom],
   );
-
-  // ⌨️ Handle Keyboard (Delete) — skip when focus is inside an input/textarea
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      )
-        return;
-      if (e.key === "Delete") {
-        if (selectedElementIds && selectedElementIds.length > 0) {
-          deleteSelected();
-        } else if (selectedElementId) {
-          deleteElement(selectedElementId);
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedElementId, selectedElementIds, deleteElement, deleteSelected]);
 
   return (
     <div
       className="w-full h-screen overflow-hidden relative"
-      style={{ backgroundColor: COLORS.canvasBg }}
+      style={{
+        backgroundImage: `radial-gradient(circle, ${canvasBg.dotColor} 1.2px, transparent 1.2px)`,
+        backgroundSize: "26px 26px",
+        backgroundColor: canvasBg.color,
+        transition: "background-color 0.3s",
+      }}
     >
-      {/* Control Info Panel */}
+      {/* Soft vignette overlay */}
       <div
         style={{
           position: "absolute",
-          bottom: 20,
-          right: 20,
-          backgroundColor: "white",
-          padding: "12px 16px",
-          borderRadius: "8px",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-          fontSize: "12px",
-          zIndex: 100,
-          fontFamily: "monospace",
-          maxWidth: "250px",
+          inset: 0,
           pointerEvents: "none",
+          background:
+            "radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,0.035) 100%)",
+          zIndex: 1,
         }}
-      >
-        <div style={{ fontWeight: "bold", marginBottom: "8px", color: "#333" }}>
-          🎨 Controls
-        </div>
-        <div style={{ marginBottom: "6px", color: "#555" }}>
-          <strong>Select:</strong> Click shapes
-        </div>
-        <div style={{ marginBottom: "6px", color: "#555" }}>
-          <strong>Multi-select:</strong> Shift + Click
-        </div>
-        <div style={{ marginBottom: "6px", color: "#555" }}>
-          <strong>Pan canvas:</strong> Ctrl/Cmd + Drag
-        </div>
-        <div style={{ marginBottom: "6px", color: "#555" }}>
-          <strong>Edit text/sticky:</strong> Double-click
-        </div>
-        <div style={{ color: "#555" }}>
-          <strong>Delete:</strong> Press Delete key
-        </div>
-      </div>
+      />
 
       <Stage
         ref={stageRef}
@@ -1217,6 +1817,7 @@ export default function Canvas() {
           position: "absolute",
           top: 0,
           left: 0,
+          zIndex: 2,
           cursor: isDraggingStage ? "grabbing" : "default",
         }}
       >
@@ -1272,7 +1873,7 @@ export default function Canvas() {
                 />
               )}
               {element.type === "polygon" && (
-                <LineShape
+                <PolygonShape
                   element={element}
                   isSelected={selectedElementIds.includes(element.id)}
                   onSelect={selectElement}
@@ -1293,6 +1894,8 @@ export default function Canvas() {
                   isSelected={selectedElementIds.includes(element.id)}
                   onSelect={selectElement}
                   onTransformEnd={updateElement}
+                  setTool={setTool}
+                  onEditingChange={handleEditingChange}
                 />
               )}
               {element.type === "sticky" && (
@@ -1301,12 +1904,27 @@ export default function Canvas() {
                   isSelected={selectedElementIds.includes(element.id)}
                   onSelect={selectElement}
                   onTransformEnd={updateElement}
+                  setTool={setTool}
+                  onEditingChange={handleEditingChange}
                 />
               )}
             </React.Fragment>
           ))}
 
-          {/* Preview while drawing */}
+          {isDrawing && selectedTool === "select" && selectionBox && (
+            <Rect
+              x={selectionBox.x}
+              y={selectionBox.y}
+              width={selectionBox.width}
+              height={selectionBox.height}
+              stroke={COLORS.selection}
+              strokeWidth={2}
+              fill={COLORS.selectionFill}
+              dash={[5, 5]}
+              listening={false}
+            />
+          )}
+
           {isDrawing && currentElement && (
             <>
               {currentElement.type === "rectangle" && (
@@ -1343,9 +1961,10 @@ export default function Canvas() {
               {(currentElement.type === "line" ||
                 currentElement.type === "arrow") && (
                 <Line
-                  points={(currentElement.points || []).flatMap(
-                    (p: { x: number; y: number }) => [p.x, p.y],
-                  )}
+                  points={(currentElement.points || []).flatMap((p) => [
+                    p.x,
+                    p.y,
+                  ])}
                   stroke={COLORS.selection}
                   strokeWidth={2}
                   lineCap="round"
@@ -1354,89 +1973,85 @@ export default function Canvas() {
                   listening={false}
                 />
               )}
-              {currentElement.type === "triangle" && (
-                <Line
-                  closed
-                  points={(() => {
-                    const w = currentElement.width || 0;
-                    const h = currentElement.height || 0;
-                    return [
-                      currentElement.x! + w / 2,
-                      currentElement.y!,
-                      currentElement.x! + w,
-                      currentElement.y! + h,
-                      currentElement.x!,
-                      currentElement.y! + h,
-                    ];
-                  })()}
-                  stroke={COLORS.selection}
-                  strokeWidth={2}
-                  fill={COLORS.selectionFill}
-                  opacity={0.7}
-                  listening={false}
-                />
-              )}
-              {currentElement.type === "diamond" && (
-                <Line
-                  closed
-                  points={(() => {
-                    const w = currentElement.width || 0;
-                    const h = currentElement.height || 0;
-                    return [
-                      currentElement.x! + w / 2,
-                      currentElement.y!,
-                      currentElement.x! + w,
-                      currentElement.y! + h / 2,
-                      currentElement.x! + w / 2,
-                      currentElement.y! + h,
-                      currentElement.x!,
-                      currentElement.y! + h / 2,
-                    ];
-                  })()}
-                  stroke={COLORS.selection}
-                  strokeWidth={2}
-                  fill={COLORS.selectionFill}
-                  opacity={0.7}
-                  listening={false}
-                />
-              )}
-              {currentElement.type === "polygon" && (
-                <Line
-                  closed
-                  points={(() => {
-                    const sides =
-                      (
-                        currentElement as Partial<WhiteboardElement> & {
-                          sides?: number;
-                        }
-                      ).sides || 6;
-                    const w = currentElement.width || 0;
-                    const h = currentElement.height || 0;
-                    const cx = (currentElement.x || 0) + w / 2;
-                    const cy = (currentElement.y || 0) + h / 2;
-                    const r = Math.min(w, h) / 2;
-                    const pts: number[] = [];
-                    for (let i = 0; i < sides; i++) {
-                      const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
-                      pts.push(
-                        cx + Math.cos(angle) * r,
-                        cy + Math.sin(angle) * r,
-                      );
-                    }
-                    return pts;
-                  })()}
-                  stroke={COLORS.selection}
-                  strokeWidth={2}
-                  fill={COLORS.selectionFill}
-                  opacity={0.7}
-                  listening={false}
-                />
-              )}
+              {currentElement.type === "triangle" &&
+                (() => {
+                  const w = currentElement.width || 0,
+                    h = currentElement.height || 0;
+                  return (
+                    <Line
+                      closed
+                      points={[
+                        currentElement.x! + w / 2,
+                        currentElement.y!,
+                        currentElement.x! + w,
+                        currentElement.y! + h,
+                        currentElement.x!,
+                        currentElement.y! + h,
+                      ]}
+                      stroke={COLORS.selection}
+                      strokeWidth={2}
+                      fill={COLORS.selectionFill}
+                      opacity={0.7}
+                      listening={false}
+                    />
+                  );
+                })()}
+              {currentElement.type === "diamond" &&
+                (() => {
+                  const w = currentElement.width || 0,
+                    h = currentElement.height || 0;
+                  return (
+                    <Line
+                      closed
+                      points={[
+                        currentElement.x! + w / 2,
+                        currentElement.y!,
+                        currentElement.x! + w,
+                        currentElement.y! + h / 2,
+                        currentElement.x! + w / 2,
+                        currentElement.y! + h,
+                        currentElement.x!,
+                        currentElement.y! + h / 2,
+                      ]}
+                      stroke={COLORS.selection}
+                      strokeWidth={2}
+                      fill={COLORS.selectionFill}
+                      opacity={0.7}
+                      listening={false}
+                    />
+                  );
+                })()}
+              {currentElement.type === "polygon" &&
+                (() => {
+                  const sides = (currentElement as any).sides || 6,
+                    w = currentElement.width || 0,
+                    h = currentElement.height || 0;
+                  const cx = (currentElement.x || 0) + w / 2,
+                    cy = (currentElement.y || 0) + h / 2,
+                    r = Math.min(w, h) / 2;
+                  const pts: number[] = [];
+                  for (let i = 0; i < sides; i++) {
+                    const a = (i / sides) * Math.PI * 2 - Math.PI / 2;
+                    pts.push(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+                  }
+                  return (
+                    <Line
+                      closed
+                      points={pts}
+                      stroke={COLORS.selection}
+                      strokeWidth={2}
+                      fill={COLORS.selectionFill}
+                      opacity={0.7}
+                      listening={false}
+                    />
+                  );
+                })()}
               {currentElement.type === "pencil" && (
                 <Line
-                  points={(currentElement.points || []).flatMap(
-                    (p: { x: number; y: number }) => [p.x, p.y],
-                  )}
+                  points={(currentElement.points || []).flatMap((p) => [
+                    p.x,
+                    p.y,
+                  ])}
                   stroke={COLORS.selection}
                   strokeWidth={2}
                   lineCap="round"
@@ -1450,6 +2065,19 @@ export default function Canvas() {
           )}
         </Layer>
       </Stage>
+
+      <ControlPanel
+        scale={scale}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onResetZoom={handleResetZoom}
+        canvasBg={canvasBg}
+        onBgChange={setCanvasBg}
+        strokeColor={elementStrokeColor}
+        onStrokeColorChange={setElementStrokeColor}
+        fillColor={elementFillColor}
+        onFillColorChange={setElementFillColor}
+      />
     </div>
   );
 }

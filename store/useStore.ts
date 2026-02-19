@@ -56,13 +56,23 @@ interface CanvasStore {
   selectedElementIds: string[];
   history: WhiteboardElement[][];
   historyIndex: number;
-
+  
+  // Color preferences
+  stickyNoteColor: string;
+  elementStrokeColor: string;
+  elementFillColor: string;
+  
+  // Actions
   addElement: (el: WhiteboardElement) => void;
   updateElement: (id: string, el: Partial<WhiteboardElement>) => void;
   deleteElement: (id: string) => void;
   deleteSelected: () => void;
   selectElement: (id: string | null, additive?: boolean) => void;
+  selectElements: (ids: string[]) => void;
   setTool: (tool: ToolType) => void;
+  setStickyNoteColor: (color: string) => void;
+  setElementStrokeColor: (color: string) => void;
+  setElementFillColor: (color: string) => void;
   clearCanvas: () => void;
   undo: () => void;
   redo: () => void;
@@ -75,6 +85,11 @@ export const useStore = create<CanvasStore>((set) => ({
   selectedElementIds: [],
   history: [[]],
   historyIndex: 0,
+  
+  // Default colors
+  stickyNoteColor: "#fef3c7", // Soft yellow
+  elementStrokeColor: "#94a3b8", // Soft gray
+  elementFillColor: "transparent",
 
   addElement: (el) =>
     set((state) => {
@@ -146,9 +161,35 @@ export const useStore = create<CanvasStore>((set) => ({
       return { selectedElementId: id, selectedElementIds: [id] };
     }),
 
+  selectElements: (ids) =>
+    set(() => {
+      if (ids.length === 0) {
+        return { selectedElementId: null, selectedElementIds: [] };
+      }
+      return {
+        selectedElementIds: ids,
+        selectedElementId: ids[ids.length - 1],
+      };
+    }),
+
   setTool: (tool) =>
     set(() => ({
       selectedTool: tool,
+    })),
+
+  setStickyNoteColor: (color) =>
+    set(() => ({
+      stickyNoteColor: color,
+    })),
+
+  setElementStrokeColor: (color) =>
+    set(() => ({
+      elementStrokeColor: color,
+    })),
+
+  setElementFillColor: (color) =>
+    set(() => ({
+      elementFillColor: color,
     })),
 
   clearCanvas: () =>
