@@ -889,29 +889,176 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   const [activePopup, setActivePopup] = useState<
     "stroke" | "fill" | "bg" | null
   >(null);
+  const [hoveredColor, setHoveredColor] = useState<string | null>(null);
 
   const panelStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,0.88)",
-    backdropFilter: "blur(16px)",
-    WebkitBackdropFilter: "blur(16px)",
-    border: "1px solid rgba(148,163,184,0.22)",
-    borderRadius: 14,
-    boxShadow: "0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)",
+    background: "rgba(255,255,255,0.95)",
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    border: "1px solid rgba(148,163,184,0.25)",
+    borderRadius: 16,
+    boxShadow: "0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)",
   };
 
-  const popupStyle: React.CSSProperties = {
-    ...panelStyle,
-    position: "absolute",
-    bottom: "calc(100% + 8px)",
-    right: 0,
-    padding: 8,
-    display: "grid",
-    gap: 5,
-    zIndex: 400,
+  const togglePopup = (name: "stroke" | "fill" | "bg") => {
+    setActivePopup((prev) => (prev === name ? null : name));
+    setHoveredColor(null);
   };
+
+  // Close popup when clicking outside
+  useEffect(() => {
+    if (!activePopup) return;
+    const handleOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-color-panel]")) {
+        setActivePopup(null);
+        setHoveredColor(null);
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [activePopup]);
+
+  const ColorSwatch = ({
+    color,
+    isSelected,
+    name,
+    onClick,
+    isTransparent,
+    isBg,
+    bg,
+  }: {
+    color: string;
+    isSelected: boolean;
+    name: string;
+    onClick: () => void;
+    isTransparent?: boolean;
+    isBg?: boolean;
+    bg?: (typeof CANVAS_BG_COLORS)[0];
+  }) => {
+    const [hovered, setHovered] = useState(false);
+    return (
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 4,
+        }}
+      >
+        <button
+          onClick={onClick}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            background: isBg
+              ? `radial-gradient(circle, ${bg!.dotColor} 1.5px, ${bg!.color} 1.5px)`
+              : isTransparent
+                ? "linear-gradient(135deg, #fff 42%, #e2e8f0 42%)"
+                : color,
+            backgroundSize: isBg ? "8px 8px" : undefined,
+            border: isSelected
+              ? "2.5px solid #3b82f6"
+              : hovered
+                ? "2px solid #94a3b8"
+                : "2px solid rgba(0,0,0,0.08)",
+            cursor: "pointer",
+            transform: hovered
+              ? "scale(1.15)"
+              : isSelected
+                ? "scale(1.1)"
+                : "scale(1)",
+            transition: "all 0.15s ease",
+            boxShadow: isSelected
+              ? "0 0 0 3px rgba(59,130,246,0.2)"
+              : hovered
+                ? "0 2px 8px rgba(0,0,0,0.15)"
+                : "none",
+            outline: "none",
+            flexShrink: 0,
+          }}
+        />
+        {/* Color name label — always visible below swatch */}
+        <span
+          style={{
+            fontSize: 9,
+            fontWeight: 600,
+            color: isSelected ? "#3b82f6" : hovered ? "#1e293b" : "#94a3b8",
+            letterSpacing: "0.02em",
+            transition: "color 0.15s",
+            userSelect: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {name}
+        </span>
+      </div>
+    );
+  };
+
+  const PopupPanel = ({
+    title,
+    children,
+    columns,
+  }: {
+    title: string;
+    children: React.ReactNode;
+    columns: number;
+  }) => (
+    <div
+      data-color-panel
+      style={{
+        ...panelStyle,
+        position: "absolute",
+        bottom: "calc(100% + 10px)",
+        right: 0,
+        padding: "12px 14px",
+        zIndex: 500,
+        minWidth: 180,
+        animation: "fadeSlideUp 0.15s ease",
+      }}
+    >
+      <style>{`
+        @keyframes fadeSlideUp {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+      {/* Title */}
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          color: "#64748b",
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          marginBottom: 10,
+          paddingBottom: 8,
+          borderBottom: "1px solid #f1f5f9",
+        }}
+      >
+        {title}
+      </div>
+      {/* Grid of swatches */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${columns}, 1fr)`,
+          gap: "8px 6px",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
 
   return (
     <div
+      data-color-panel
       style={{
         position: "fixed",
         bottom: 20,
@@ -954,6 +1101,8 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           ["Edit text", "Double-click"],
           ["Delete", "Del / Backspace"],
           ["Zoom", "Scroll  or  +  /  −"],
+          ["Undo", "Ctrl+Z"],
+          ["Redo", "Ctrl+Shift+Z or Ctrl+Y"],
         ].map(([k, v]) => (
           <div
             key={k}
@@ -973,237 +1122,189 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
       <div
         style={{
           ...panelStyle,
-          padding: "7px 10px",
+          padding: "8px 12px",
           display: "flex",
           alignItems: "center",
-          gap: 5,
+          gap: 6,
         }}
       >
-        {/* Stroke swatch */}
-        <div style={{ position: "relative" }}>
+        {/* ── Stroke swatch ── */}
+        <div style={{ position: "relative" }} data-color-panel>
+          {activePopup === "stroke" && (
+            <PopupPanel title="Stroke Color" columns={4}>
+              {ELEMENT_STROKE_COLORS.map((c) => (
+                <ColorSwatch
+                  key={c.color}
+                  color={c.color}
+                  name={c.name}
+                  isSelected={strokeColor === c.color}
+                  onClick={() => {
+                    onStrokeColorChange(c.color);
+                    setActivePopup(null);
+                  }}
+                />
+              ))}
+            </PopupPanel>
+          )}
           <button
+            onClick={() => togglePopup("stroke")}
             title="Stroke color"
-            onMouseEnter={() => setActivePopup("stroke")}
-            onMouseLeave={() => setActivePopup(null)}
             style={{
-              width: 24,
-              height: 24,
-              borderRadius: 7,
-              border: "2.5px solid white",
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              border:
+                activePopup === "stroke"
+                  ? "2.5px solid #3b82f6"
+                  : "2.5px solid white",
               outline: `2px solid ${strokeColor === "transparent" ? "#cbd5e1" : strokeColor}`,
               background: strokeColor,
               cursor: "pointer",
-              transition: "transform 0.13s",
+              transition: "all 0.13s",
               display: "block",
+              boxShadow:
+                activePopup === "stroke"
+                  ? "0 0 0 3px rgba(59,130,246,0.2)"
+                  : "none",
             }}
-            onMouseOver={(e) =>
-              (e.currentTarget.style.transform = "scale(1.18)")
-            }
-            onMouseOut={(e) => (e.currentTarget.style.transform = "scale(1)")}
           />
-          {activePopup === "stroke" && (
-            <div
-              onMouseEnter={() => setActivePopup("stroke")}
-              onMouseLeave={() => setActivePopup(null)}
-              style={{
-                ...popupStyle,
-                gridTemplateColumns: "repeat(4,1fr)",
-                width: 120,
-              }}
-            >
-              <div
-                style={{
-                  gridColumn: "1/-1",
-                  fontSize: 9,
-                  fontWeight: 700,
-                  color: "#94a3b8",
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  marginBottom: 1,
-                }}
-              >
-                Stroke
-              </div>
-              {ELEMENT_STROKE_COLORS.map((c) => (
-                <button
+          {/* Label below */}
+          <div
+            style={{
+              fontSize: 8,
+              color: "#94a3b8",
+              textAlign: "center",
+              marginTop: 2,
+              fontWeight: 600,
+              letterSpacing: "0.03em",
+            }}
+          >
+            Stroke
+          </div>
+        </div>
+
+        {/* ── Fill swatch ── */}
+        <div style={{ position: "relative" }} data-color-panel>
+          {activePopup === "fill" && (
+            <PopupPanel title="Fill Color" columns={4}>
+              {ELEMENT_FILL_COLORS.map((c) => (
+                <ColorSwatch
                   key={c.color}
-                  title={c.name}
-                  onClick={() => onStrokeColorChange(c.color)}
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 5,
-                    background: c.color,
-                    border:
-                      strokeColor === c.color
-                        ? "2.5px solid #3b82f6"
-                        : "2px solid rgba(0,0,0,0.08)",
-                    cursor: "pointer",
-                    transition: "transform 0.1s",
-                    transform:
-                      strokeColor === c.color ? "scale(1.22)" : "scale(1)",
+                  color={c.color}
+                  name={c.name}
+                  isSelected={fillColor === c.color}
+                  isTransparent={c.color === "transparent"}
+                  onClick={() => {
+                    onFillColorChange(c.color);
+                    setActivePopup(null);
                   }}
                 />
               ))}
-            </div>
+            </PopupPanel>
           )}
-        </div>
-
-        {/* Fill swatch */}
-        <div style={{ position: "relative" }}>
           <button
+            onClick={() => togglePopup("fill")}
             title="Fill color"
-            onMouseEnter={() => setActivePopup("fill")}
-            onMouseLeave={() => setActivePopup(null)}
             style={{
-              width: 24,
-              height: 24,
-              borderRadius: 7,
-              border: "2.5px solid white",
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              border:
+                activePopup === "fill"
+                  ? "2.5px solid #3b82f6"
+                  : "2.5px solid white",
               outline: "2px solid #cbd5e1",
               background:
                 fillColor === "transparent"
-                  ? "linear-gradient(135deg,#fff 42%,#f1f5f9 42%)"
+                  ? "linear-gradient(135deg,#fff 42%,#e2e8f0 42%)"
                   : fillColor,
               cursor: "pointer",
-              transition: "transform 0.13s",
+              transition: "all 0.13s",
               display: "block",
+              boxShadow:
+                activePopup === "fill"
+                  ? "0 0 0 3px rgba(59,130,246,0.2)"
+                  : "none",
             }}
-            onMouseOver={(e) =>
-              (e.currentTarget.style.transform = "scale(1.18)")
-            }
-            onMouseOut={(e) => (e.currentTarget.style.transform = "scale(1)")}
           />
-          {activePopup === "fill" && (
-            <div
-              onMouseEnter={() => setActivePopup("fill")}
-              onMouseLeave={() => setActivePopup(null)}
-              style={{
-                ...popupStyle,
-                gridTemplateColumns: "repeat(4,1fr)",
-                width: 120,
-              }}
-            >
-              <div
-                style={{
-                  gridColumn: "1/-1",
-                  fontSize: 9,
-                  fontWeight: 700,
-                  color: "#94a3b8",
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  marginBottom: 1,
-                }}
-              >
-                Fill
-              </div>
-              {ELEMENT_FILL_COLORS.map((c) => (
-                <button
-                  key={c.color}
-                  title={c.name}
-                  onClick={() => onFillColorChange(c.color)}
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 5,
-                    background:
-                      c.color === "transparent"
-                        ? "linear-gradient(135deg,#fff 42%,#f1f5f9 42%)"
-                        : c.color,
-                    border:
-                      fillColor === c.color
-                        ? "2.5px solid #3b82f6"
-                        : "2px solid rgba(0,0,0,0.08)",
-                    cursor: "pointer",
-                    transition: "transform 0.1s",
-                    transform:
-                      fillColor === c.color ? "scale(1.22)" : "scale(1)",
+          <div
+            style={{
+              fontSize: 8,
+              color: "#94a3b8",
+              textAlign: "center",
+              marginTop: 2,
+              fontWeight: 600,
+              letterSpacing: "0.03em",
+            }}
+          >
+            Fill
+          </div>
+        </div>
+
+        {/* ── BG swatch ── */}
+        <div style={{ position: "relative" }} data-color-panel>
+          {activePopup === "bg" && (
+            <PopupPanel title="Canvas Background" columns={3}>
+              {CANVAS_BG_COLORS.map((bg) => (
+                <ColorSwatch
+                  key={bg.color}
+                  color={bg.color}
+                  name={bg.name}
+                  isSelected={canvasBg.color === bg.color}
+                  isBg
+                  bg={bg}
+                  onClick={() => {
+                    onBgChange(bg);
+                    setActivePopup(null);
                   }}
                 />
               ))}
-            </div>
+            </PopupPanel>
           )}
-        </div>
-
-        {/* BG swatch */}
-        <div style={{ position: "relative" }}>
           <button
+            onClick={() => togglePopup("bg")}
             title="Canvas background"
-            onMouseEnter={() => setActivePopup("bg")}
-            onMouseLeave={() => setActivePopup(null)}
             style={{
-              width: 24,
-              height: 24,
-              borderRadius: 7,
-              border: "2.5px solid white",
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              border:
+                activePopup === "bg"
+                  ? "2.5px solid #3b82f6"
+                  : "2.5px solid white",
               outline: "2px solid #cbd5e1",
               backgroundImage: `radial-gradient(circle, ${canvasBg.dotColor} 1.5px, ${canvasBg.color} 1.5px)`,
               backgroundSize: "7px 7px",
               cursor: "pointer",
-              transition: "transform 0.13s",
+              transition: "all 0.13s",
               display: "block",
+              boxShadow:
+                activePopup === "bg"
+                  ? "0 0 0 3px rgba(59,130,246,0.2)"
+                  : "none",
             }}
-            onMouseOver={(e) =>
-              (e.currentTarget.style.transform = "scale(1.18)")
-            }
-            onMouseOut={(e) => (e.currentTarget.style.transform = "scale(1)")}
           />
-          {activePopup === "bg" && (
-            <div
-              onMouseEnter={() => setActivePopup("bg")}
-              onMouseLeave={() => setActivePopup(null)}
-              style={{
-                ...popupStyle,
-                gridTemplateColumns: "repeat(3,1fr)",
-                width: 96,
-              }}
-            >
-              <div
-                style={{
-                  gridColumn: "1/-1",
-                  fontSize: 9,
-                  fontWeight: 700,
-                  color: "#94a3b8",
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  marginBottom: 1,
-                }}
-              >
-                Canvas
-              </div>
-              {CANVAS_BG_COLORS.map((bg) => (
-                <button
-                  key={bg.color}
-                  title={bg.name}
-                  onClick={() => onBgChange(bg)}
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 6,
-                    backgroundImage: `radial-gradient(circle, ${bg.dotColor} 1.5px, ${bg.color} 1.5px)`,
-                    backgroundSize: "7px 7px",
-                    border:
-                      canvasBg.color === bg.color
-                        ? "2.5px solid #3b82f6"
-                        : "2px solid rgba(0,0,0,0.08)",
-                    cursor: "pointer",
-                    transition: "transform 0.1s",
-                    transform:
-                      canvasBg.color === bg.color ? "scale(1.18)" : "scale(1)",
-                  }}
-                />
-              ))}
-            </div>
-          )}
+          <div
+            style={{
+              fontSize: 8,
+              color: "#94a3b8",
+              textAlign: "center",
+              marginTop: 2,
+              fontWeight: 600,
+              letterSpacing: "0.03em",
+            }}
+          >
+            Canvas
+          </div>
         </div>
 
         {/* divider */}
         <div
           style={{
             width: 1,
-            height: 18,
+            height: 28,
             background: "#e2e8f0",
-            margin: "0 1px",
+            margin: "0 2px",
           }}
         />
 
@@ -1212,9 +1313,9 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           onClick={onZoomOut}
           title="Zoom out (−)"
           style={{
-            width: 24,
-            height: 24,
-            borderRadius: 7,
+            width: 28,
+            height: 28,
+            borderRadius: 8,
             border: "none",
             background: "transparent",
             cursor: "pointer",
@@ -1222,7 +1323,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             alignItems: "center",
             justifyContent: "center",
             color: "#64748b",
-            fontSize: 15,
+            fontSize: 16,
             fontWeight: 600,
             lineHeight: 1,
             transition: "background 0.1s,color 0.1s",
@@ -1244,19 +1345,19 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           onClick={onResetZoom}
           title="Reset zoom (Ctrl+0)"
           style={{
-            minWidth: 38,
-            height: 22,
+            minWidth: 42,
+            height: 24,
             borderRadius: 6,
             border: "none",
             background: "transparent",
             cursor: "pointer",
             color: "#475569",
-            fontSize: 10,
+            fontSize: 11,
             fontWeight: 700,
             fontFamily: "monospace",
             letterSpacing: "0.02em",
             transition: "background 0.1s",
-            padding: "0 3px",
+            padding: "0 4px",
           }}
           onMouseOver={(e) => (e.currentTarget.style.background = "#f1f5f9")}
           onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
@@ -1269,9 +1370,9 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           onClick={onZoomIn}
           title="Zoom in (+)"
           style={{
-            width: 24,
-            height: 24,
-            borderRadius: 7,
+            width: 28,
+            height: 28,
+            borderRadius: 8,
             border: "none",
             background: "transparent",
             cursor: "pointer",
@@ -1279,7 +1380,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             alignItems: "center",
             justifyContent: "center",
             color: "#64748b",
-            fontSize: 15,
+            fontSize: 16,
             fontWeight: 600,
             lineHeight: 1,
             transition: "background 0.1s,color 0.1s",
@@ -1404,6 +1505,7 @@ export default function Canvas() {
     stage.batchDraw();
   }, []);
 
+  // ── Keyboard shortcuts ──────────────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -1411,24 +1513,46 @@ export default function Canvas() {
         e.target instanceof HTMLTextAreaElement
       )
         return;
+
+      // Delete / Backspace
       if (e.key === "Delete" || e.key === "Backspace") {
         const s = useStore.getState();
         if (s.selectedElementIds.length > 0) s.deleteSelected();
         else if (s.selectedElementId) s.deleteElement(s.selectedElementId);
       }
+
+      // Zoom +
       if ((e.key === "=" || e.key === "+") && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         handleZoomIn();
       }
+      // Zoom -
       if (e.key === "-" && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         handleZoomOut();
       }
+      // Reset zoom
       if (e.key === "0" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         handleResetZoom();
       }
+
+      // ✅ Undo — Ctrl+Z / Cmd+Z
+      if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        e.preventDefault();
+        useStore.getState().undo();
+      }
+
+      // ✅ Redo — Ctrl+Shift+Z / Cmd+Shift+Z  OR  Ctrl+Y / Cmd+Y
+      if (
+        (e.key === "z" && (e.ctrlKey || e.metaKey) && e.shiftKey) ||
+        (e.key === "y" && (e.ctrlKey || e.metaKey))
+      ) {
+        e.preventDefault();
+        useStore.getState().redo();
+      }
     };
+
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleZoomIn, handleZoomOut, handleResetZoom]);
