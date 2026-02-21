@@ -1026,14 +1026,39 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
   const selectedEls = elements.filter((el) => selectedIds.includes(el.id));
 
   for (const el of selectedEls) {
-    if (el.points && el.points.length > 0) {
+    if (el.type === "circle") {
+      // Circle: x and y are stored as top-left corner in element data
+      // but width/height define the bounding box
+      const x = el.x ?? 0,
+        y = el.y ?? 0;
+      const w = el.width ?? 100,
+        h = el.height ?? 100;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + w);
+      maxY = Math.max(maxY, y + h);
+    } else if (el.points && el.points.length > 0) {
+      // For elements with points (polygon, arrow, line, pencil)
       for (const p of el.points) {
         minX = Math.min(minX, p.x);
         minY = Math.min(minY, p.y);
         maxX = Math.max(maxX, p.x);
         maxY = Math.max(maxY, p.y);
       }
+    } else if (el.type === "text") {
+      // Text: use x, y and estimate dimensions from fontSize and text length
+      const x = el.x ?? 0,
+        y = el.y ?? 0;
+      const fontSize = el.fontSize || 28;
+      const textLength = (el.text || "Text").length;
+      const estimatedWidth = Math.max(textLength * (fontSize * 0.6), 100);
+      const estimatedHeight = fontSize + 8;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + estimatedWidth);
+      maxY = Math.max(maxY, y + estimatedHeight);
     } else {
+      // Default for rectangles, triangles, diamonds, sticky notes
       const x = el.x ?? 0,
         y = el.y ?? 0;
       const w = el.width ?? 60,
@@ -2099,7 +2124,7 @@ export default function Canvas() {
 
   // ══════════════════════════════════════════════════════════════════════════
   // Shared draw-start logic (used by both mouse and touch)
-  // ══════════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════���══════════════════════════════════════════════
   const startDraw = useCallback(
     (pos: { x: number; y: number }, isOnStage: boolean) => {
       if (isAnyTextEditingRef.current) return;
