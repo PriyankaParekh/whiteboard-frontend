@@ -37,10 +37,34 @@ const toolbarButtons: ToolbarButton[] = [
   { id: "diamond", icon: <Diamond size={16} />, label: "Diamond" },
   { id: "pencil", icon: <Pen size={16} />, label: "Pencil" },
   { id: "text", icon: <Type size={16} />, label: "Text" },
-  { id: "sticky", icon: <StickyNote size={16} />, label: "Sticky Note", divider: true },
+  {
+    id: "sticky",
+    icon: <StickyNote size={16} />,
+    label: "Sticky Note",
+    divider: true,
+  },
   { id: "undo", icon: <RotateCcw size={16} />, label: "Undo" },
   { id: "redo", icon: <RotateCw size={16} />, label: "Redo" },
-  { id: "upload", icon: <Upload size={16} />, label: "Upload File", divider: true },
+  {
+    id: "upload",
+    icon: <Upload size={16} />,
+    label: "Upload File",
+    divider: true,
+  },
+];
+
+const DRAWING_TOOLS = [
+  "select",
+  "rectangle",
+  "circle",
+  "line",
+  "arrow",
+  "polygon",
+  "triangle",
+  "diamond",
+  "pencil",
+  "text",
+  "sticky",
 ];
 
 export default function Toolbar() {
@@ -95,7 +119,9 @@ export default function Toolbar() {
               }
               className={`relative w-8 h-8 rounded-lg transition-all duration-200 flex items-center justify-center font-medium text-sm
                 ${
-                  ["undo", "redo", "delete", "upload"].includes(button.id as string)
+                  ["undo", "redo", "delete", "upload"].includes(
+                    button.id as string,
+                  )
                     ? "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                     : selectedTool === button.id
                       ? "bg-blue-100 text-blue-700 shadow-md shadow-blue-200/50"
@@ -116,12 +142,13 @@ export default function Toolbar() {
                 {button.icon}
               </span>
 
-              {[
-                "select", "rectangle", "circle", "line", "arrow",
-                "polygon", "triangle", "diamond", "pencil", "text", "sticky",
-              ].includes(button.id as string) &&
+              {DRAWING_TOOLS.includes(button.id as string) &&
                 selectedTool === button.id && (
-                  <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-blue-400/20 to-transparent pointer-events-none" />
+                  <div
+                    className={`absolute inset-0 rounded-lg bg-gradient-to-br pointer-events-none
+                         from-blue-400/20 to-transparent
+                    `}
+                  />
                 )}
             </button>
           </div>

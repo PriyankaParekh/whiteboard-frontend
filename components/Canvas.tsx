@@ -70,8 +70,10 @@ function getStickyNoteStrokeColor(fillColor: string): string {
 interface ShapeProps {
   element: WhiteboardElement;
   isSelected: boolean;
+  isSingleSelected: boolean; // true only when this is the ONLY selected element
   onSelect: (id: string | null, additive?: boolean) => void;
   onTransformEnd: (id: string, newAttrs: Partial<WhiteboardElement>) => void;
+  onMultiDragEnd?: (id: string, newX: number, newY: number) => void;
   setTool?: (tool: ToolType) => void;
   onEditingChange?: (isEditing: boolean) => void;
 }
@@ -100,49 +102,44 @@ function computeArrowHead(
 const RectShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
+  isSingleSelected,
   onSelect,
   onTransformEnd,
+  onMultiDragEnd,
 }) => {
   const rectRef = useRef<Konva.Rect>(null);
   const trRef = useRef<Konva.Transformer>(null);
+
   useEffect(() => {
-    if (isSelected && trRef.current && rectRef.current) {
+    if (isSingleSelected && trRef.current && rectRef.current) {
       trRef.current.nodes([rectRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [isSelected]);
+  }, [isSingleSelected]);
+
   return (
     <>
-      {isSelected && (
-        <Rect
-          x={(element.x || 0) - 2}
-          y={(element.y || 0) - 2}
-          width={(element.width || 100) + 4}
-          height={(element.height || 100) + 4}
-          stroke={COLORS.selection}
-          strokeWidth={2}
-          cornerRadius={8}
-          opacity={0.5}
-          dash={[5, 5]}
-          listening={false}
-        />
-      )}
       <Rect
         ref={rectRef}
         x={element.x}
         y={element.y}
-        width={element.width || 100}
-        height={element.height || 100}
-        stroke={element.strokeColor || COLORS.stroke}
+        width={element.width || 0}
+        height={element.height || 0}
+        stroke={
+          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
+        }
         strokeWidth={element.strokeWidth || 2}
         fill={element.fillColor || COLORS.fill}
-        cornerRadius={8}
-        draggable
+        cornerRadius={4}
+        draggable={isSelected}
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onDragEnd={(e) =>
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
-        }
+        onDragEnd={(e) => {
+          const nx = e.target.x(),
+            ny = e.target.y();
+          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
+          else onTransformEnd(element.id, { x: nx, y: ny });
+        }}
         onTransformEnd={() => {
           const node = rectRef.current;
           if (node) {
@@ -157,11 +154,16 @@ const RectShape: React.FC<ShapeProps> = ({
           }
         }}
       />
-      {isSelected && (
+      {isSingleSelected && (
         <Transformer
           ref={trRef}
-          anchorSize={8}
+          rotateEnabled={false}
           borderStroke={COLORS.selection}
+          borderStrokeWidth={1.5}
+          anchorStroke={COLORS.selection}
+          anchorFill="white"
+          anchorSize={8}
+          anchorCornerRadius={2}
         />
       )}
     </>
@@ -171,65 +173,69 @@ const RectShape: React.FC<ShapeProps> = ({
 const CircleShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
+  isSingleSelected,
   onSelect,
   onTransformEnd,
+  onMultiDragEnd,
 }) => {
   const circleRef = useRef<Konva.Circle>(null);
   const trRef = useRef<Konva.Transformer>(null);
+
   useEffect(() => {
-    if (isSelected && trRef.current && circleRef.current) {
+    if (isSingleSelected && trRef.current && circleRef.current) {
       trRef.current.nodes([circleRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [isSelected]);
+  }, [isSingleSelected]);
+
   const radius = Math.max(element.width || 50, element.height || 50) / 2;
+
   return (
     <>
-      {isSelected && (
-        <Circle
-          x={element.x}
-          y={element.y}
-          radius={radius + 2}
-          stroke={COLORS.selection}
-          strokeWidth={2}
-          opacity={0.5}
-          dash={[5, 5]}
-          listening={false}
-        />
-      )}
       <Circle
         ref={circleRef}
-        x={element.x}
-        y={element.y}
+        x={element.x + radius}
+        y={element.y + radius}
         radius={radius}
-        stroke={element.strokeColor || COLORS.stroke}
+        stroke={
+          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
+        }
         strokeWidth={element.strokeWidth || 2}
         fill={element.fillColor || COLORS.fill}
-        draggable
+        draggable={isSelected}
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onDragEnd={(e) =>
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
-        }
+        onDragEnd={(e) => {
+          const nx = e.target.x() - radius,
+            ny = e.target.y() - radius;
+          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
+          else onTransformEnd(element.id, { x: nx, y: ny });
+        }}
         onTransformEnd={() => {
           const node = circleRef.current;
           if (node) {
+            const newRadius = node.radius() * node.scaleX();
             onTransformEnd(element.id, {
-              x: node.x(),
-              y: node.y(),
-              width: Math.max(10, node.radius() * 2 * node.scaleX()),
-              height: Math.max(10, node.radius() * 2 * node.scaleY()),
+              x: node.x() - newRadius,
+              y: node.y() - newRadius,
+              width: Math.max(10, newRadius * 2),
+              height: Math.max(10, newRadius * 2),
             });
             node.scaleX(1);
             node.scaleY(1);
           }
         }}
       />
-      {isSelected && (
+      {isSingleSelected && (
         <Transformer
           ref={trRef}
-          anchorSize={8}
+          rotateEnabled={false}
           borderStroke={COLORS.selection}
+          borderStrokeWidth={1.5}
+          anchorStroke={COLORS.selection}
+          anchorFill="white"
+          anchorSize={8}
+          anchorCornerRadius={2}
         />
       )}
     </>
@@ -239,28 +245,35 @@ const CircleShape: React.FC<ShapeProps> = ({
 const LineShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
+  isSingleSelected,
   onSelect,
   onTransformEnd,
+  onMultiDragEnd,
 }) => {
   const lineRef = useRef<Konva.Line>(null);
   const trRef = useRef<Konva.Transformer>(null);
+
   useEffect(() => {
-    if (isSelected && trRef.current && lineRef.current) {
+    if (isSingleSelected && trRef.current && lineRef.current) {
       trRef.current.nodes([lineRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [isSelected]);
+  }, [isSingleSelected]);
+
   const points = element.points || [];
+
   return (
     <>
       <Line
         ref={lineRef}
         points={points.flatMap((p) => [p.x, p.y])}
-        stroke={element.strokeColor || COLORS.stroke}
+        stroke={
+          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
+        }
         strokeWidth={element.strokeWidth || 2}
         lineCap="round"
         lineJoin="round"
-        draggable
+        draggable={isSelected}
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onDragEnd={(e) => {
@@ -271,18 +284,26 @@ const LineShape: React.FC<ShapeProps> = ({
             onTransformEnd(element.id, {
               x: 0,
               y: 0,
-              points: element.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
+              points: element.points.map((p) => ({
+                x: p.x + dx,
+                y: p.y + dy,
+              })),
             });
             node.x(0);
             node.y(0);
           }
         }}
       />
-      {isSelected && (
+      {isSingleSelected && (
         <Transformer
           ref={trRef}
-          anchorSize={8}
+          rotateEnabled={false}
           borderStroke={COLORS.selection}
+          borderStrokeWidth={1.5}
+          anchorStroke={COLORS.selection}
+          anchorFill="white"
+          anchorSize={8}
+          anchorCornerRadius={2}
         />
       )}
     </>
@@ -292,34 +313,42 @@ const LineShape: React.FC<ShapeProps> = ({
 const ArrowShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
+  isSingleSelected,
   onSelect,
   onTransformEnd,
+  onMultiDragEnd,
 }) => {
   const groupRef = useRef<Konva.Group>(null);
   const trRef = useRef<Konva.Transformer>(null);
+
   useEffect(() => {
-    if (isSelected && trRef.current && groupRef.current) {
+    if (isSingleSelected && trRef.current && groupRef.current) {
       trRef.current.nodes([groupRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [isSelected]);
+  }, [isSingleSelected]);
+
   const points = element.points || [];
+
   return (
     <>
       <Group
         ref={groupRef}
-        x={element.x}
-        y={element.y}
-        draggable
+        draggable={isSingleSelected}
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onDragEnd={(e) =>
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
-        }
+        onDragEnd={(e) => {
+          const nx = e.target.x(),
+            ny = e.target.y();
+          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
+          else onTransformEnd(element.id, { x: nx, y: ny });
+        }}
       >
         <Line
           points={points.flatMap((p) => [p.x, p.y])}
-          stroke={element.strokeColor || COLORS.stroke}
+          stroke={
+            isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
+          }
           strokeWidth={element.strokeWidth || 2}
           lineCap="round"
           lineJoin="round"
@@ -330,17 +359,27 @@ const ArrowShape: React.FC<ShapeProps> = ({
               points[points.length - 2],
               points[points.length - 1],
             )}
+            stroke={
+              isSelected
+                ? COLORS.selection
+                : element.strokeColor || COLORS.stroke
+            }
+            strokeWidth={element.strokeWidth || 2}
             fill={element.strokeColor || COLORS.stroke}
             closed
-            strokeWidth={0}
           />
         )}
       </Group>
-      {isSelected && (
+      {isSingleSelected && (
         <Transformer
           ref={trRef}
-          anchorSize={8}
+          rotateEnabled={false}
           borderStroke={COLORS.selection}
+          borderStrokeWidth={1.5}
+          anchorStroke={COLORS.selection}
+          anchorFill="white"
+          anchorSize={8}
+          anchorCornerRadius={2}
         />
       )}
     </>
@@ -350,36 +389,46 @@ const ArrowShape: React.FC<ShapeProps> = ({
 const TriangleShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
+  isSingleSelected,
   onSelect,
   onTransformEnd,
+  onMultiDragEnd,
 }) => {
   const polyRef = useRef<Konva.Line>(null);
   const trRef = useRef<Konva.Transformer>(null);
+
   useEffect(() => {
-    if (isSelected && trRef.current && polyRef.current) {
+    if (isSingleSelected && trRef.current && polyRef.current) {
       trRef.current.nodes([polyRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [isSelected]);
+  }, [isSingleSelected]);
+
   const width = element.width || 100,
     height = element.height || 100;
+
   return (
     <>
       <Line
-        closed
         ref={polyRef}
         x={element.x}
         y={element.y}
         points={[width / 2, 0, width, height, 0, height]}
-        stroke={element.strokeColor || COLORS.stroke}
+        closed
+        stroke={
+          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
+        }
         strokeWidth={element.strokeWidth || 2}
         fill={element.fillColor || COLORS.fill}
-        draggable
+        draggable={isSelected}
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onDragEnd={(e) =>
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
-        }
+        onDragEnd={(e) => {
+          const nx = e.target.x(),
+            ny = e.target.y();
+          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
+          else onTransformEnd(element.id, { x: nx, y: ny });
+        }}
         onTransformEnd={() => {
           const node = polyRef.current;
           if (node) {
@@ -394,11 +443,16 @@ const TriangleShape: React.FC<ShapeProps> = ({
           }
         }}
       />
-      {isSelected && (
+      {isSingleSelected && (
         <Transformer
           ref={trRef}
-          anchorSize={8}
+          rotateEnabled={false}
           borderStroke={COLORS.selection}
+          borderStrokeWidth={1.5}
+          anchorStroke={COLORS.selection}
+          anchorFill="white"
+          anchorSize={8}
+          anchorCornerRadius={2}
         />
       )}
     </>
@@ -408,23 +462,27 @@ const TriangleShape: React.FC<ShapeProps> = ({
 const DiamondShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
+  isSingleSelected,
   onSelect,
   onTransformEnd,
+  onMultiDragEnd,
 }) => {
   const polyRef = useRef<Konva.Line>(null);
   const trRef = useRef<Konva.Transformer>(null);
+
   useEffect(() => {
-    if (isSelected && trRef.current && polyRef.current) {
+    if (isSingleSelected && trRef.current && polyRef.current) {
       trRef.current.nodes([polyRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [isSelected]);
+  }, [isSingleSelected]);
+
   const width = element.width || 100,
     height = element.height || 100;
+
   return (
     <>
       <Line
-        closed
         ref={polyRef}
         x={element.x}
         y={element.y}
@@ -438,15 +496,21 @@ const DiamondShape: React.FC<ShapeProps> = ({
           0,
           height / 2,
         ]}
-        stroke={element.strokeColor || COLORS.stroke}
+        closed
+        stroke={
+          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
+        }
         strokeWidth={element.strokeWidth || 2}
         fill={element.fillColor || COLORS.fill}
-        draggable
+        draggable={isSelected}
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onDragEnd={(e) =>
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
-        }
+        onDragEnd={(e) => {
+          const nx = e.target.x(),
+            ny = e.target.y();
+          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
+          else onTransformEnd(element.id, { x: nx, y: ny });
+        }}
         onTransformEnd={() => {
           const node = polyRef.current;
           if (node) {
@@ -461,11 +525,16 @@ const DiamondShape: React.FC<ShapeProps> = ({
           }
         }}
       />
-      {isSelected && (
+      {isSingleSelected && (
         <Transformer
           ref={trRef}
-          anchorSize={8}
+          rotateEnabled={false}
           borderStroke={COLORS.selection}
+          borderStrokeWidth={1.5}
+          anchorStroke={COLORS.selection}
+          anchorFill="white"
+          anchorSize={8}
+          anchorCornerRadius={2}
         />
       )}
     </>
@@ -475,34 +544,42 @@ const DiamondShape: React.FC<ShapeProps> = ({
 const PolygonShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
+  isSingleSelected,
   onSelect,
   onTransformEnd,
+  onMultiDragEnd,
 }) => {
   const lineRef = useRef<Konva.Line>(null);
   const trRef = useRef<Konva.Transformer>(null);
+
   useEffect(() => {
-    if (isSelected && trRef.current && lineRef.current) {
+    if (isSingleSelected && trRef.current && lineRef.current) {
       trRef.current.nodes([lineRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [isSelected]);
+  }, [isSingleSelected]);
+
   const points = element.points || [];
   if (points.length === 0) return null;
+
   const minX = Math.min(...points.map((p) => p.x));
   const minY = Math.min(...points.map((p) => p.y));
   const relativePoints = points.map((p) => [p.x - minX, p.y - minY]).flat();
+
   return (
     <>
       <Line
-        closed
         ref={lineRef}
         x={minX}
         y={minY}
         points={relativePoints}
-        stroke={element.strokeColor || COLORS.stroke}
+        closed
+        stroke={
+          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
+        }
         strokeWidth={element.strokeWidth || 2}
         fill={element.fillColor || COLORS.fill}
-        draggable
+        draggable={isSelected}
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onDragEnd={(e) => {
@@ -526,11 +603,16 @@ const PolygonShape: React.FC<ShapeProps> = ({
           }
         }}
       />
-      {isSelected && (
+      {isSingleSelected && (
         <Transformer
           ref={trRef}
-          anchorSize={8}
+          rotateEnabled={false}
           borderStroke={COLORS.selection}
+          borderStrokeWidth={1.5}
+          anchorStroke={COLORS.selection}
+          anchorFill="white"
+          anchorSize={8}
+          anchorCornerRadius={2}
         />
       )}
     </>
@@ -540,29 +622,36 @@ const PolygonShape: React.FC<ShapeProps> = ({
 const PencilShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
+  isSingleSelected,
   onSelect,
   onTransformEnd,
+  onMultiDragEnd,
 }) => {
   const lineRef = useRef<Konva.Line>(null);
   const trRef = useRef<Konva.Transformer>(null);
+
   useEffect(() => {
-    if (isSelected && trRef.current && lineRef.current) {
+    if (isSingleSelected && trRef.current && lineRef.current) {
       trRef.current.nodes([lineRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [isSelected]);
+  }, [isSingleSelected]);
+
   const points = element.points || [];
+
   return (
     <>
       <Line
         ref={lineRef}
         points={points.flatMap((p) => [p.x, p.y])}
-        stroke={element.strokeColor || COLORS.stroke}
+        stroke={
+          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
+        }
         strokeWidth={element.strokeWidth || 2}
         lineCap="round"
         lineJoin="round"
         tension={0.5}
-        draggable
+        draggable={isSelected}
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onDragEnd={(e) => {
@@ -580,11 +669,16 @@ const PencilShape: React.FC<ShapeProps> = ({
           }
         }}
       />
-      {isSelected && (
+      {isSingleSelected && (
         <Transformer
           ref={trRef}
-          anchorSize={8}
+          rotateEnabled={false}
           borderStroke={COLORS.selection}
+          borderStrokeWidth={1.5}
+          anchorStroke={COLORS.selection}
+          anchorFill="white"
+          anchorSize={8}
+          anchorCornerRadius={2}
         />
       )}
     </>
@@ -594,8 +688,10 @@ const PencilShape: React.FC<ShapeProps> = ({
 const TextShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
+  isSingleSelected,
   onSelect,
   onTransformEnd,
+  onMultiDragEnd,
   setTool,
   onEditingChange,
 }) => {
@@ -603,15 +699,15 @@ const TextShape: React.FC<ShapeProps> = ({
   const trRef = useRef<Konva.Transformer>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const lastClickTimeRef = useRef<number>(0);
+  const lastClickTimeRef = useRef(0);
   const isEditingRef = useRef(false);
 
   useEffect(() => {
-    if (isSelected && trRef.current && textRef.current && !isEditing) {
+    if (isSingleSelected && trRef.current && textRef.current && !isEditing) {
       trRef.current.nodes([textRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [isSelected, isEditing]);
+  }, [isSingleSelected, isEditing]);
 
   const finishEditing = useCallback(
     (newText: string) => {
@@ -633,6 +729,7 @@ const TextShape: React.FC<ShapeProps> = ({
       }
       return;
     }
+
     isEditingRef.current = true;
     if (!textRef.current) return;
     const stage = textRef.current.getStage();
@@ -640,6 +737,7 @@ const TextShape: React.FC<ShapeProps> = ({
     const stageBox = stage.container().getBoundingClientRect();
     const absPos = textRef.current.getAbsolutePosition();
     const screenScale = stage.scaleX();
+
     const input = document.createElement("input");
     input.type = "text";
     input.value = element.text || "";
@@ -691,25 +789,47 @@ const TextShape: React.FC<ShapeProps> = ({
 
   return (
     <>
+      {isSelected && !isSingleSelected && (
+        <Rect
+          x={element.x - 4}
+          y={element.y - 4}
+          width={(textRef.current?.width() || 100) + 8}
+          height={(textRef.current?.height() || 36) + 8}
+          fill="transparent"
+          stroke={COLORS.selection}
+          strokeWidth={1.5}
+          dash={[4, 3]}
+          cornerRadius={3}
+          listening={false}
+        />
+      )}
       <KonvaText
         ref={textRef}
         x={element.x}
         y={element.y}
-        text={isEditing ? "" : element.text || "Double-click to edit"}
+        text={element.text || "Text"}
         fontSize={element.fontSize || 28}
-        fill={element.strokeColor || COLORS.stroke}
-        draggable={!isEditing}
+        fill={element.strokeColor || "#1e293b"}
+        draggable={isSingleSelected}
         onClick={handleClick}
         onTap={handleClick}
-        onDragEnd={(e) =>
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
-        }
+        onDragEnd={(e) => {
+          const nx = e.target.x(),
+            ny = e.target.y();
+          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
+          else onTransformEnd(element.id, { x: nx, y: ny });
+        }}
       />
-      {isSelected && !isEditing && (
+      {isSingleSelected && !isEditing && (
         <Transformer
           ref={trRef}
-          anchorSize={8}
+          rotateEnabled={false}
           borderStroke={COLORS.selection}
+          borderStrokeWidth={1.5}
+          anchorStroke={COLORS.selection}
+          anchorFill="white"
+          anchorSize={8}
+          anchorCornerRadius={2}
         />
       )}
     </>
@@ -719,8 +839,10 @@ const TextShape: React.FC<ShapeProps> = ({
 const StickyShape: React.FC<ShapeProps> = ({
   element,
   isSelected,
+  isSingleSelected,
   onSelect,
   onTransformEnd,
+  onMultiDragEnd,
   setTool,
   onEditingChange,
 }) => {
@@ -728,17 +850,17 @@ const StickyShape: React.FC<ShapeProps> = ({
   const trRef = useRef<Konva.Transformer>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const lastClickTimeRef = useRef<number>(0);
+  const lastClickTimeRef = useRef(0);
   const isEditingRef = useRef(false);
   const width = element.width || 180,
     height = element.height || 180;
 
   useEffect(() => {
-    if (isSelected && trRef.current && groupRef.current && !isEditing) {
+    if (isSingleSelected && trRef.current && groupRef.current && !isEditing) {
       trRef.current.nodes([groupRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
-  }, [isSelected, isEditing]);
+  }, [isSingleSelected, isEditing]);
 
   const finishEditing = useCallback(
     (newText: string) => {
@@ -760,6 +882,7 @@ const StickyShape: React.FC<ShapeProps> = ({
       }
       return;
     }
+
     isEditingRef.current = true;
     if (!groupRef.current) return;
     const stage = groupRef.current.getStage();
@@ -767,6 +890,7 @@ const StickyShape: React.FC<ShapeProps> = ({
     const stageBox = stage.container().getBoundingClientRect();
     const absPos = groupRef.current.getAbsolutePosition();
     const screenScale = stage.scaleX();
+
     const textarea = document.createElement("textarea");
     textarea.value = element.text || "";
     textarea.style.cssText = `position:fixed;left:${stageBox.left + absPos.x}px;top:${stageBox.top + absPos.y}px;width:${width * screenScale}px;height:${height * screenScale}px;font-size:${(element.fontSize || 20) * screenScale}px;padding:10px;border:2px solid ${COLORS.selection};background-color:${element.fillColor || "#fef3c7"};z-index:10000;font-family:inherit;resize:none;outline:none;box-shadow:0 4px 12px rgba(0,0,0,0.15);box-sizing:border-box;border-radius:4px;`;
@@ -820,12 +944,15 @@ const StickyShape: React.FC<ShapeProps> = ({
         ref={groupRef}
         x={element.x}
         y={element.y}
-        draggable={!isEditing}
+        draggable={isSingleSelected}
         onClick={handleClick}
         onTap={handleClick}
-        onDragEnd={(e) =>
-          onTransformEnd(element.id, { x: e.target.x(), y: e.target.y() })
-        }
+        onDragEnd={(e) => {
+          const nx = e.target.x(),
+            ny = e.target.y();
+          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
+          else onTransformEnd(element.id, { x: nx, y: ny });
+        }}
       >
         <Rect
           x={0}
@@ -834,33 +961,161 @@ const StickyShape: React.FC<ShapeProps> = ({
           height={height}
           fill={element.fillColor || "#fef3c7"}
           stroke={
-            isEditing ? COLORS.selection : element.strokeColor || "#fcd34d"
+            isSelected && !isSingleSelected
+              ? COLORS.selection
+              : element.strokeColor ||
+                getStickyNoteStrokeColor(element.fillColor || "#fef3c7")
           }
-          strokeWidth={2}
-          cornerRadius={4}
+          strokeWidth={isSelected && !isSingleSelected ? 2.5 : 1.5}
+          cornerRadius={6}
+          shadowColor="rgba(0,0,0,0.08)"
+          shadowBlur={8}
+          shadowOffset={{ x: 2, y: 2 }}
         />
         <KonvaText
           x={10}
           y={10}
           width={width - 20}
-          text={isEditing ? "" : element.text || "Double-click to edit"}
+          height={height - 20}
+          text={element.text || "Note"}
           fontSize={element.fontSize || 20}
-          fill="#333333"
+          fill="#374151"
           wrap="word"
+          ellipsis
         />
+        {isSelected && !isEditing && (
+          <Transformer
+            ref={trRef}
+            rotateEnabled={false}
+            borderStroke={COLORS.selection}
+            borderStrokeWidth={1.5}
+            anchorStroke={COLORS.selection}
+            anchorFill="white"
+            anchorSize={8}
+            anchorCornerRadius={2}
+          />
+        )}
       </Group>
-      {isSelected && !isEditing && (
-        <Transformer
-          ref={trRef}
-          anchorSize={8}
-          borderStroke={COLORS.selection}
-        />
-      )}
     </>
   );
 };
 
-// ─── Bottom-Right Control Panel ───────────────────────────────────────────────
+// ─── Unified Multi-Select Box ─────────────────────────────────────────────────
+// Renders one dashed bounding box around ALL selected elements + handles group drag
+interface MultiSelectBoxProps {
+  elements: WhiteboardElement[];
+  selectedIds: string[];
+  onDragAll: (dx: number, dy: number) => void;
+  onSelect: (id: string | null) => void;
+}
+
+const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
+  elements,
+  selectedIds,
+  onDragAll,
+  onSelect,
+}) => {
+  const groupRef = useRef<Konva.Group>(null);
+  const PADDING = 8;
+
+  // Compute bounding box of all selected elements
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
+  const selectedEls = elements.filter((el) => selectedIds.includes(el.id));
+
+  for (const el of selectedEls) {
+    if (el.points && el.points.length > 0) {
+      for (const p of el.points) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+      }
+    } else {
+      const x = el.x ?? 0,
+        y = el.y ?? 0;
+      const w = el.width ?? 60,
+        h = el.height ?? 60;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + w);
+      maxY = Math.max(maxY, y + h);
+    }
+  }
+
+  if (!isFinite(minX)) return null;
+
+  const boxX = minX - PADDING;
+  const boxY = minY - PADDING;
+  const boxW = maxX - minX + PADDING * 2;
+  const boxH = maxY - minY + PADDING * 2;
+
+  return (
+    <Group
+      ref={groupRef}
+      x={0}
+      y={0}
+      draggable
+      onDragStart={() => {
+        // reset group position each drag start
+        groupRef.current?.position({ x: 0, y: 0 });
+      }}
+      onDragMove={() => {
+        // keep visual snappy — nothing needed, Konva handles it
+      }}
+      onDragEnd={(e) => {
+        const dx = e.target.x();
+        const dy = e.target.y();
+        // move all selected elements
+        onDragAll(dx, dy);
+        // reset group back to origin
+        e.target.x(0);
+        e.target.y(0);
+      }}
+      onClick={(e) => {
+        if (e.target === groupRef.current) onSelect(null);
+      }}
+    >
+      {/* The unified selection rectangle */}
+      <Rect
+        x={boxX}
+        y={boxY}
+        width={boxW}
+        height={boxH}
+        fill="rgba(59,130,246,0.04)"
+        stroke={COLORS.selection}
+        strokeWidth={1.5}
+        dash={[6, 3]}
+        listening={true}
+        cornerRadius={4}
+      />
+      {/* Corner anchors for visual feedback */}
+      {[
+        [boxX, boxY],
+        [boxX + boxW, boxY],
+        [boxX, boxY + boxH],
+        [boxX + boxW, boxY + boxH],
+      ].map(([cx, cy], i) => (
+        <Rect
+          key={i}
+          x={(cx as number) - 4}
+          y={(cy as number) - 4}
+          width={8}
+          height={8}
+          fill="white"
+          stroke={COLORS.selection}
+          strokeWidth={1.5}
+          cornerRadius={2}
+          listening={false}
+        />
+      ))}
+    </Group>
+  );
+};
+
+// ─── Bottom-Right Control Panel ──────────────────────────────────────────────
 interface ControlPanelProps {
   scale: number;
   onZoomIn: () => void;
@@ -889,7 +1144,15 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   const [activePopup, setActivePopup] = useState<
     "stroke" | "fill" | "bg" | null
   >(null);
-  const [hoveredColor, setHoveredColor] = useState<string | null>(null);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const panelStyle: React.CSSProperties = {
     background: "rgba(255,255,255,0.95)",
@@ -902,17 +1165,14 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
 
   const togglePopup = (name: "stroke" | "fill" | "bg") => {
     setActivePopup((prev) => (prev === name ? null : name));
-    setHoveredColor(null);
   };
 
-  // Close popup when clicking outside
   useEffect(() => {
     if (!activePopup) return;
     const handleOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target.closest("[data-color-panel]")) {
         setActivePopup(null);
-        setHoveredColor(null);
       }
     };
     document.addEventListener("mousedown", handleOutside);
@@ -940,11 +1200,10 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
     return (
       <div
         style={{
-          position: "relative",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 4,
+          gap: 3,
         }}
       >
         <button
@@ -982,18 +1241,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             flexShrink: 0,
           }}
         />
-        {/* Color name label — always visible below swatch */}
-        <span
-          style={{
-            fontSize: 9,
-            fontWeight: 600,
-            color: isSelected ? "#3b82f6" : hovered ? "#1e293b" : "#94a3b8",
-            letterSpacing: "0.02em",
-            transition: "color 0.15s",
-            userSelect: "none",
-            whiteSpace: "nowrap",
-          }}
-        >
+        <span style={{ fontSize: 9, color: "#94a3b8", whiteSpace: "nowrap" }}>
           {name}
         </span>
       </div>
@@ -1012,43 +1260,37 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
     <div
       data-color-panel
       style={{
-        ...panelStyle,
         position: "absolute",
-        bottom: "calc(100% + 10px)",
+        bottom: "calc(100% + 8px)",
         right: 0,
-        padding: "12px 14px",
-        zIndex: 500,
+        background: "rgba(255,255,255,0.98)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        border: "1px solid rgba(148,163,184,0.25)",
+        borderRadius: 12,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+        padding: "10px 12px 12px",
+        zIndex: 200,
         minWidth: 180,
-        animation: "fadeSlideUp 0.15s ease",
       }}
     >
-      <style>{`
-        @keyframes fadeSlideUp {
-          from { opacity: 0; transform: translateY(6px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
-      {/* Title */}
       <div
         style={{
           fontSize: 10,
-          fontWeight: 700,
+          fontWeight: 600,
           color: "#64748b",
-          letterSpacing: "0.08em",
+          marginBottom: 8,
+          letterSpacing: "0.05em",
           textTransform: "uppercase",
-          marginBottom: 10,
-          paddingBottom: 8,
-          borderBottom: "1px solid #f1f5f9",
         }}
       >
         {title}
       </div>
-      {/* Grid of swatches */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: `repeat(${columns}, 1fr)`,
-          gap: "8px 6px",
+          gap: 6,
         }}
       >
         {children}
@@ -1056,19 +1298,18 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
     </div>
   );
 
-  return (
+  // ── Desktop layout (unchanged) ──
+  const desktopPanel = (
     <div
-      data-color-panel
       style={{
         position: "fixed",
-        bottom: 20,
-        right: 20,
-        zIndex: 300,
+        right: 16,
+        bottom: 16,
+        zIndex: 100,
         display: "flex",
         flexDirection: "column",
         alignItems: "flex-end",
         gap: 8,
-        fontFamily: "'DM Sans','Segoe UI',sans-serif",
       }}
     >
       {/* Help card */}
@@ -1078,18 +1319,15 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           padding: "10px 14px",
           fontSize: 11,
           color: "#64748b",
-          lineHeight: 1.75,
-          minWidth: 192,
+          minWidth: 190,
         }}
       >
         <div
           style={{
             fontWeight: 700,
-            fontSize: 10,
-            color: "#94a3b8",
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-            marginBottom: 5,
+            color: "#1e293b",
+            marginBottom: 6,
+            fontSize: 12,
           }}
         >
           Controls
@@ -1100,16 +1338,19 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           ["Pan", "Ctrl/Cmd + Drag"],
           ["Edit text", "Double-click"],
           ["Delete", "Del / Backspace"],
-          ["Zoom", "Scroll  or  +  /  −"],
+          ["Zoom", "Scroll or + / −"],
           ["Undo", "Ctrl+Z"],
           ["Redo", "Ctrl+Shift+Z or Ctrl+Y"],
+          ["Group", "Ctrl+G"],
+          ["Ungroup", "Ctrl+Shift+G"],
         ].map(([k, v]) => (
           <div
             key={k}
             style={{
               display: "flex",
               justifyContent: "space-between",
-              gap: 10,
+              gap: 12,
+              marginBottom: 2,
             }}
           >
             <span style={{ fontWeight: 600, color: "#475569" }}>{k}</span>
@@ -1120,24 +1361,34 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
 
       {/* Color + Zoom bar */}
       <div
+        data-color-panel
         style={{
           ...panelStyle,
-          padding: "8px 12px",
+          padding: "8px 10px",
           display: "flex",
           alignItems: "center",
-          gap: 6,
+          gap: 8,
+          position: "relative",
         }}
       >
-        {/* ── Stroke swatch ── */}
-        <div style={{ position: "relative" }} data-color-panel>
+        {/* Stroke */}
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 3,
+          }}
+        >
           {activePopup === "stroke" && (
             <PopupPanel title="Stroke Color" columns={4}>
               {ELEMENT_STROKE_COLORS.map((c) => (
                 <ColorSwatch
                   key={c.color}
                   color={c.color}
-                  name={c.name}
                   isSelected={strokeColor === c.color}
+                  name={c.name}
                   onClick={() => {
                     onStrokeColorChange(c.color);
                     setActivePopup(null);
@@ -1168,36 +1419,32 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                   : "none",
             }}
           />
-          {/* Label below */}
-          <div
-            style={{
-              fontSize: 8,
-              color: "#94a3b8",
-              textAlign: "center",
-              marginTop: 2,
-              fontWeight: 600,
-              letterSpacing: "0.03em",
-            }}
-          >
-            Stroke
-          </div>
+          <div style={{ fontSize: 9, color: "#94a3b8" }}>Stroke</div>
         </div>
 
-        {/* ── Fill swatch ── */}
-        <div style={{ position: "relative" }} data-color-panel>
+        {/* Fill */}
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 3,
+          }}
+        >
           {activePopup === "fill" && (
             <PopupPanel title="Fill Color" columns={4}>
               {ELEMENT_FILL_COLORS.map((c) => (
                 <ColorSwatch
                   key={c.color}
                   color={c.color}
-                  name={c.name}
                   isSelected={fillColor === c.color}
-                  isTransparent={c.color === "transparent"}
+                  name={c.name}
                   onClick={() => {
                     onFillColorChange(c.color);
                     setActivePopup(null);
                   }}
+                  isTransparent={c.color === "transparent"}
                 />
               ))}
             </PopupPanel>
@@ -1227,36 +1474,33 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                   : "none",
             }}
           />
-          <div
-            style={{
-              fontSize: 8,
-              color: "#94a3b8",
-              textAlign: "center",
-              marginTop: 2,
-              fontWeight: 600,
-              letterSpacing: "0.03em",
-            }}
-          >
-            Fill
-          </div>
+          <div style={{ fontSize: 9, color: "#94a3b8" }}>Fill</div>
         </div>
 
-        {/* ── BG swatch ── */}
-        <div style={{ position: "relative" }} data-color-panel>
+        {/* BG */}
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 3,
+          }}
+        >
           {activePopup === "bg" && (
             <PopupPanel title="Canvas Background" columns={3}>
               {CANVAS_BG_COLORS.map((bg) => (
                 <ColorSwatch
                   key={bg.color}
                   color={bg.color}
-                  name={bg.name}
                   isSelected={canvasBg.color === bg.color}
-                  isBg
-                  bg={bg}
+                  name={bg.name}
                   onClick={() => {
                     onBgChange(bg);
                     setActivePopup(null);
                   }}
+                  isBg
+                  bg={bg}
                 />
               ))}
             </PopupPanel>
@@ -1284,18 +1528,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                   : "none",
             }}
           />
-          <div
-            style={{
-              fontSize: 8,
-              color: "#94a3b8",
-              textAlign: "center",
-              marginTop: 2,
-              fontWeight: 600,
-              letterSpacing: "0.03em",
-            }}
-          >
-            Canvas
-          </div>
+          <div style={{ fontSize: 9, color: "#94a3b8" }}>Canvas</div>
         </div>
 
         {/* divider */}
@@ -1308,25 +1541,22 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           }}
         />
 
-        {/* Zoom out */}
+        {/* Zoom */}
         <button
           onClick={onZoomOut}
-          title="Zoom out (−)"
           style={{
             width: 28,
             height: 28,
-            borderRadius: 8,
+            borderRadius: 7,
             border: "none",
             background: "transparent",
+            color: "#64748b",
             cursor: "pointer",
+            fontSize: 16,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: "#64748b",
-            fontSize: 16,
-            fontWeight: 600,
-            lineHeight: 1,
-            transition: "background 0.1s,color 0.1s",
+            transition: "all 0.13s",
           }}
           onMouseOver={(e) => {
             e.currentTarget.style.background = "#f1f5f9";
@@ -1339,51 +1569,40 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
         >
           −
         </button>
-
-        {/* Zoom % */}
         <button
           onClick={onResetZoom}
-          title="Reset zoom (Ctrl+0)"
           style={{
-            minWidth: 42,
-            height: 24,
-            borderRadius: 6,
+            minWidth: 44,
+            height: 28,
+            borderRadius: 7,
             border: "none",
             background: "transparent",
-            cursor: "pointer",
             color: "#475569",
+            cursor: "pointer",
             fontSize: 11,
-            fontWeight: 700,
-            fontFamily: "monospace",
-            letterSpacing: "0.02em",
-            transition: "background 0.1s",
-            padding: "0 4px",
+            fontWeight: 600,
+            transition: "all 0.13s",
           }}
           onMouseOver={(e) => (e.currentTarget.style.background = "#f1f5f9")}
           onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
         >
           {Math.round(scale * 100)}%
         </button>
-
-        {/* Zoom in */}
         <button
           onClick={onZoomIn}
-          title="Zoom in (+)"
           style={{
             width: 28,
             height: 28,
-            borderRadius: 8,
+            borderRadius: 7,
             border: "none",
             background: "transparent",
+            color: "#64748b",
             cursor: "pointer",
+            fontSize: 16,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: "#64748b",
-            fontSize: 16,
-            fontWeight: 600,
-            lineHeight: 1,
-            transition: "background 0.1s,color 0.1s",
+            transition: "all 0.13s",
           }}
           onMouseOver={(e) => {
             e.currentTarget.style.background = "#f1f5f9";
@@ -1399,9 +1618,262 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
       </div>
     </div>
   );
+
+  // ── Mobile layout ──
+  const mobilePanel = (
+    <div style={{ position: "fixed", right: 12, bottom: 12, zIndex: 100 }}>
+      {/* Floating action button */}
+      <button
+        onClick={() => setIsMobileOpen((v) => !v)}
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: "50%",
+          background: isMobileOpen ? "#3b82f6" : "rgba(255,255,255,0.95)",
+          border: "1px solid rgba(148,163,184,0.3)",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          fontSize: 20,
+          color: isMobileOpen ? "white" : "#475569",
+          transition: "all 0.2s",
+          backdropFilter: "blur(12px)",
+        }}
+        aria-label="Toggle controls"
+      >
+        {isMobileOpen ? "✕" : "⚙️"}
+      </button>
+
+      {/* Slide-up panel */}
+      {isMobileOpen && (
+        <div
+          data-color-panel
+          style={{
+            position: "absolute",
+            bottom: 60,
+            right: 0,
+            background: "rgba(255,255,255,0.98)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            border: "1px solid rgba(148,163,184,0.25)",
+            borderRadius: 16,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
+            padding: 16,
+            minWidth: 240,
+            animation: "slideUp 0.2s ease",
+          }}
+        >
+          <style>{`@keyframes slideUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }`}</style>
+
+          <div
+            style={{
+              fontWeight: 700,
+              color: "#1e293b",
+              marginBottom: 12,
+              fontSize: 13,
+            }}
+          >
+            Controls
+          </div>
+
+          {/* Zoom row */}
+          <div style={{ marginBottom: 14 }}>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: "#94a3b8",
+                marginBottom: 6,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}
+            >
+              Zoom
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <button
+                onClick={onZoomOut}
+                style={{
+                  flex: 1,
+                  height: 36,
+                  borderRadius: 8,
+                  border: "1px solid #e2e8f0",
+                  background: "#f8fafc",
+                  color: "#475569",
+                  cursor: "pointer",
+                  fontSize: 18,
+                  fontWeight: 300,
+                }}
+              >
+                −
+              </button>
+              <button
+                onClick={onResetZoom}
+                style={{
+                  flex: 2,
+                  height: 36,
+                  borderRadius: 8,
+                  border: "1px solid #e2e8f0",
+                  background: "#f8fafc",
+                  color: "#475569",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                {Math.round(scale * 100)}%
+              </button>
+              <button
+                onClick={onZoomIn}
+                style={{
+                  flex: 1,
+                  height: 36,
+                  borderRadius: 8,
+                  border: "1px solid #e2e8f0",
+                  background: "#f8fafc",
+                  color: "#475569",
+                  cursor: "pointer",
+                  fontSize: 18,
+                  fontWeight: 300,
+                }}
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          {/* Color rows */}
+          <div style={{ marginBottom: 14 }}>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: "#94a3b8",
+                marginBottom: 6,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}
+            >
+              Stroke Color
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {ELEMENT_STROKE_COLORS.map((c) => (
+                <button
+                  key={c.color}
+                  onClick={() => onStrokeColorChange(c.color)}
+                  title={c.name}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 7,
+                    background: c.color,
+                    border:
+                      strokeColor === c.color
+                        ? "3px solid #3b82f6"
+                        : "2px solid rgba(0,0,0,0.1)",
+                    cursor: "pointer",
+                    boxShadow:
+                      strokeColor === c.color
+                        ? "0 0 0 2px rgba(59,130,246,0.3)"
+                        : "none",
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: "#94a3b8",
+                marginBottom: 6,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}
+            >
+              Fill Color
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {ELEMENT_FILL_COLORS.map((c) => (
+                <button
+                  key={c.color}
+                  onClick={() => onFillColorChange(c.color)}
+                  title={c.name}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 7,
+                    background:
+                      c.color === "transparent"
+                        ? "linear-gradient(135deg,#fff 42%,#e2e8f0 42%)"
+                        : c.color,
+                    border:
+                      fillColor === c.color
+                        ? "3px solid #3b82f6"
+                        : "2px solid rgba(0,0,0,0.1)",
+                    cursor: "pointer",
+                    boxShadow:
+                      fillColor === c.color
+                        ? "0 0 0 2px rgba(59,130,246,0.3)"
+                        : "none",
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: "#94a3b8",
+                marginBottom: 6,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}
+            >
+              Canvas Background
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {CANVAS_BG_COLORS.map((bg) => (
+                <button
+                  key={bg.color}
+                  onClick={() => onBgChange(bg)}
+                  title={bg.name}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 7,
+                    backgroundImage: `radial-gradient(circle, ${bg.dotColor} 1.5px, ${bg.color} 1.5px)`,
+                    backgroundSize: "7px 7px",
+                    border:
+                      canvasBg.color === bg.color
+                        ? "3px solid #3b82f6"
+                        : "2px solid rgba(0,0,0,0.1)",
+                    cursor: "pointer",
+                    boxShadow:
+                      canvasBg.color === bg.color
+                        ? "0 0 0 2px rgba(59,130,246,0.3)"
+                        : "none",
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  return isMobile ? mobilePanel : desktopPanel;
 };
 
-// ─── Main Canvas ──────────────────────────────────────────────────────────────
+// ─── Main Canvas ─────────────────────────────────────────────────────────────
 export default function Canvas() {
   const {
     elements,
@@ -1410,6 +1882,7 @@ export default function Canvas() {
     selectedElementIds,
     addElement,
     updateElement,
+    updateElements,
     selectElement,
     selectElements,
     deleteElement,
@@ -1421,13 +1894,14 @@ export default function Canvas() {
     setStickyNoteColor,
     setElementStrokeColor,
     setElementFillColor,
+    groupSelected,
+    ungroupSelected,
   } = useStore();
 
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
   const drawStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentElement, setCurrentElement] =
     useState<Partial<WhiteboardElement> | null>(null);
@@ -1441,13 +1915,57 @@ export default function Canvas() {
     height: number;
   } | null>(null);
   const [canvasBg, setCanvasBg] = useState(CANVAS_BG_COLORS[0]);
-
   const isAnyTextEditingRef = useRef(false);
+  const isPanningRef = useRef(false);
+  const lastTouchPosRef = useRef<{ x: number; y: number } | null>(null);
+  // Tracks element positions at drag-start for multi-drag
+  const multiDragStartPositionsRef = useRef<
+    Map<string, { x: number; y: number; points?: { x: number; y: number }[] }>
+  >(new Map());
+  const multiDragAnchorRef = useRef<{ x: number; y: number } | null>(null);
+
   const handleEditingChange = useCallback((editing: boolean) => {
     isAnyTextEditingRef.current = editing;
   }, []);
 
-  const getMousePos = useCallback((): { x: number; y: number } => {
+  // ── Multi-element drag: when dragging one selected element, move all selected ──
+  const handleMultiDragEnd = useCallback(
+    (draggedId: string, newX: number, newY: number) => {
+      const state = useStore.getState();
+      const allSelected = state.selectedElementIds;
+
+      // If only one element selected, do normal single update
+      if (allSelected.length <= 1) {
+        updateElement(draggedId, { x: newX, y: newY });
+        return;
+      }
+
+      // Find the dragged element to compute delta
+      const draggedEl = state.elements.find((el) => el.id === draggedId);
+      if (!draggedEl) return;
+
+      // For point-based elements, x/y is 0 so use element.x as anchor
+      const oldX = draggedEl.points
+        ? (draggedEl.points[0]?.x ?? draggedEl.x)
+        : draggedEl.x;
+      const oldY = draggedEl.points
+        ? (draggedEl.points[0]?.y ?? draggedEl.y)
+        : draggedEl.y;
+      const dx = draggedEl.points ? newX - oldX : newX - draggedEl.x;
+      const dy = draggedEl.points ? newY - oldY : newY - draggedEl.y;
+
+      // Move all OTHER selected elements by the same delta
+      const otherIds = allSelected.filter((id) => id !== draggedId);
+      updateElements(otherIds, { dx, dy });
+
+      // Update the dragged element itself
+      updateElement(draggedId, { x: newX, y: newY });
+    },
+    [updateElement, updateElements],
+  );
+
+  // ── Get position from pointer or touch ────────────────────────────────────
+  const getPointerPos = useCallback((): { x: number; y: number } => {
     const stage = stageRef.current;
     if (!stage) return { x: 0, y: 0 };
     const pointer = stage.getPointerPosition();
@@ -1457,6 +1975,22 @@ export default function Canvas() {
     return {
       x: (pointer.x - stagePos.x) / stageScale,
       y: (pointer.y - stagePos.y) / stageScale,
+    };
+  }, []);
+
+  // ── Get stage-space coords from a touch ──────────────────────────────────
+  const getTouchPos = useCallback((touch: Touch): { x: number; y: number } => {
+    const stage = stageRef.current;
+    if (!stage) return { x: 0, y: 0 };
+    const container = stage.container();
+    const rect = container.getBoundingClientRect();
+    const rawX = touch.clientX - rect.left;
+    const rawY = touch.clientY - rect.top;
+    const stagePos = stage.position();
+    const stageScale = stage.scaleX();
+    return {
+      x: (rawX - stagePos.x) / stageScale,
+      y: (rawY - stagePos.y) / stageScale,
     };
   }, []);
 
@@ -1505,7 +2039,7 @@ export default function Canvas() {
     stage.batchDraw();
   }, []);
 
-  // ── Keyboard shortcuts ──────────────────────────────────────────────────────
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -1513,37 +2047,27 @@ export default function Canvas() {
         e.target instanceof HTMLTextAreaElement
       )
         return;
-
-      // Delete / Backspace
       if (e.key === "Delete" || e.key === "Backspace") {
         const s = useStore.getState();
         if (s.selectedElementIds.length > 0) s.deleteSelected();
         else if (s.selectedElementId) s.deleteElement(s.selectedElementId);
       }
-
-      // Zoom +
       if ((e.key === "=" || e.key === "+") && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         handleZoomIn();
       }
-      // Zoom -
       if (e.key === "-" && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
         handleZoomOut();
       }
-      // Reset zoom
       if (e.key === "0" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         handleResetZoom();
       }
-
-      // ✅ Undo — Ctrl+Z / Cmd+Z
       if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
         e.preventDefault();
         useStore.getState().undo();
       }
-
-      // ✅ Redo — Ctrl+Shift+Z / Cmd+Shift+Z  OR  Ctrl+Y / Cmd+Y
       if (
         (e.key === "z" && (e.ctrlKey || e.metaKey) && e.shiftKey) ||
         (e.key === "y" && (e.ctrlKey || e.metaKey))
@@ -1551,31 +2075,44 @@ export default function Canvas() {
         e.preventDefault();
         useStore.getState().redo();
       }
+      // Group / Ungroup
+      if (
+        (e.key === "g" || e.key === "G") &&
+        (e.ctrlKey || e.metaKey) &&
+        !e.shiftKey
+      ) {
+        e.preventDefault();
+        useStore.getState().groupSelected();
+      }
+      if (
+        (e.key === "g" || e.key === "G") &&
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey
+      ) {
+        e.preventDefault();
+        useStore.getState().ungroupSelected();
+      }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleZoomIn, handleZoomOut, handleResetZoom]);
 
-  const handleMouseDown = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent>) => {
+  // ══════════════════════════════════════════════════════════════════════════
+  // Shared draw-start logic (used by both mouse and touch)
+  // ══════════════════════════════════════════════════════════════════════════
+  const startDraw = useCallback(
+    (pos: { x: number; y: number }, isOnStage: boolean) => {
       if (isAnyTextEditingRef.current) return;
-      if (e.evt.ctrlKey || e.evt.metaKey) {
-        setIsDraggingStage(true);
-        lastPosRef.current = stageRef.current?.getPointerPosition() ?? null;
-        e.evt.preventDefault();
-        return;
-      }
+
+      drawStartRef.current = pos;
+
       if (selectedTool === "select") {
-        if (e.target !== e.target.getStage()) return;
-        const pos = getMousePos();
-        drawStartRef.current = pos;
+        if (!isOnStage) return;
         setSelectionBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
         setIsDrawing(true);
         return;
       }
-      const pos = getMousePos();
-      drawStartRef.current = pos;
+
       if (selectedTool === "rectangle") {
         setCurrentElement({
           id: `rect-${Date.now()}`,
@@ -1667,7 +2204,7 @@ export default function Canvas() {
         });
         setIsDrawing(true);
       } else if (selectedTool === "text") {
-        if (e.target !== e.target.getStage()) return;
+        if (!isOnStage) return;
         const newEl = {
           id: `text-${Date.now()}`,
           type: "text" as const,
@@ -1681,7 +2218,7 @@ export default function Canvas() {
         selectElement(newEl.id);
         setTool("select");
       } else if (selectedTool === "sticky") {
-        if (e.target !== e.target.getStage()) return;
+        if (!isOnStage) return;
         const newEl = {
           id: `sticky-${Date.now()}`,
           type: "sticky" as const,
@@ -1703,34 +2240,16 @@ export default function Canvas() {
       addElement,
       selectElement,
       setTool,
-      getMousePos,
       elementStrokeColor,
       elementFillColor,
       stickyNoteColor,
     ],
   );
 
-  const handleMouseMove = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent>) => {
-      if (isDraggingStage && (e.evt.ctrlKey || e.evt.metaKey)) {
-        const stage = stageRef.current;
-        if (!stage) return;
-        const pointerPos = stage.getPointerPosition();
-        if (!pointerPos) return;
-        const lastPos = lastPosRef.current ?? pointerPos;
-        const newPos = {
-          x: position.x + (pointerPos.x - lastPos.x),
-          y: position.y + (pointerPos.y - lastPos.y),
-        };
-        setPosition(newPos);
-        stage.position(newPos);
-        stage.batchDraw();
-        lastPosRef.current = pointerPos;
-        return;
-      }
-      if (!isDrawing) return;
-      const pos = getMousePos();
+  const updateDraw = useCallback(
+    (pos: { x: number; y: number }) => {
       const start = drawStartRef.current;
+
       if (selectedTool === "select") {
         setSelectionBox({
           x: Math.min(pos.x, start.x),
@@ -1740,7 +2259,9 @@ export default function Canvas() {
         });
         return;
       }
+
       if (!currentElement) return;
+
       if (
         ["rectangle", "circle", "triangle", "diamond", "polygon"].includes(
           selectedTool,
@@ -1775,15 +2296,87 @@ export default function Canvas() {
         );
       }
     },
-    [
-      isDraggingStage,
-      isDrawing,
-      currentElement,
-      selectedTool,
-      position,
-      getMousePos,
-    ],
+    [selectedTool, currentElement],
   );
+
+  const finishDraw = useCallback(() => {
+    if (selectedTool === "select" && selectionBox) {
+      if (selectionBox.width > 5 || selectionBox.height > 5) {
+        const selectedIds = elements
+          .filter((el) => elementIntersectsBox(el, selectionBox))
+          .map((el) => el.id);
+        if (selectedIds.length > 0) selectElements(selectedIds);
+        else selectElement(null);
+      } else {
+        selectElement(null);
+      }
+      setSelectionBox(null);
+      setIsDrawing(false);
+      return;
+    }
+
+    if (!isDrawing || !currentElement) return;
+
+    let addedId: string | null = null;
+
+    if (
+      ["rectangle", "circle", "triangle", "diamond"].includes(
+        currentElement.type || "",
+      )
+    ) {
+      if ((currentElement.width || 0) > 5 && (currentElement.height || 0) > 5) {
+        addElement(currentElement as WhiteboardElement);
+        addedId = currentElement.id as string;
+      }
+    } else if (
+      ["line", "arrow", "pencil"].includes(currentElement.type || "")
+    ) {
+      addElement(currentElement as WhiteboardElement);
+      addedId = currentElement.id as string;
+    } else if (currentElement.type === "polygon") {
+      const sides = (currentElement as any).sides || 6;
+      const w = currentElement.width || 0,
+        h = currentElement.height || 0;
+      const cx = (currentElement.x || 0) + w / 2,
+        cy = (currentElement.y || 0) + h / 2,
+        r = Math.min(w, h) / 2;
+      const points = Array.from({ length: sides }).map((_, i) => {
+        const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
+        return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
+      });
+      const el = {
+        id: currentElement.id as string,
+        type: "polygon",
+        x: currentElement.x || 0,
+        y: currentElement.y || 0,
+        points,
+        strokeColor: currentElement.strokeColor,
+        fillColor: currentElement.fillColor,
+        strokeWidth: currentElement.strokeWidth,
+      } as WhiteboardElement;
+      addElement(el);
+      addedId = el.id;
+    }
+
+    // Auto-select and switch to select tool — but NOT for pencil (stay in pencil mode)
+    if (addedId && currentElement?.type !== "pencil") {
+      selectElement(addedId);
+      setTool("select");
+    }
+
+    setIsDrawing(false);
+    setCurrentElement(null);
+  }, [
+    isDrawing,
+    currentElement,
+    selectedTool,
+    selectionBox,
+    elements,
+    selectElement,
+    selectElements,
+    addElement,
+    setTool,
+  ]);
 
   const elementIntersectsBox = useCallback(
     (
@@ -1825,74 +2418,143 @@ export default function Canvas() {
     [],
   );
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // MOUSE events (desktop)
+  // ══════════════════════════════════════════════════════════════════════════
+  const handleMouseDown = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
+      if (isAnyTextEditingRef.current) return;
+      if (e.evt.ctrlKey || e.evt.metaKey) {
+        setIsDraggingStage(true);
+        lastPosRef.current = stageRef.current?.getPointerPosition() ?? null;
+        e.evt.preventDefault();
+        return;
+      }
+      const isOnStage = e.target === e.target.getStage();
+      const pos = getPointerPos();
+      startDraw(pos, isOnStage);
+    },
+    [getPointerPos, startDraw],
+  );
+
+  const handleMouseMove = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
+      if (isDraggingStage && (e.evt.ctrlKey || e.evt.metaKey)) {
+        const stage = stageRef.current;
+        if (!stage) return;
+        const pointerPos = stage.getPointerPosition();
+        if (!pointerPos) return;
+        const lastPos = lastPosRef.current ?? pointerPos;
+        const newPos = {
+          x: position.x + (pointerPos.x - lastPos.x),
+          y: position.y + (pointerPos.y - lastPos.y),
+        };
+        setPosition(newPos);
+        stage.position(newPos);
+        stage.batchDraw();
+        lastPosRef.current = pointerPos;
+        return;
+      }
+      if (!isDrawing) return;
+      updateDraw(getPointerPos());
+    },
+    [isDraggingStage, isDrawing, getPointerPos, updateDraw, position],
+  );
+
   const handleMouseUp = useCallback(() => {
     if (isDraggingStage) {
       setIsDraggingStage(false);
       lastPosRef.current = null;
       return;
     }
-    if (selectedTool === "select" && selectionBox) {
-      if (selectionBox.width > 5 || selectionBox.height > 5) {
-        const selectedIds = elements
-          .filter((el) => elementIntersectsBox(el, selectionBox))
-          .map((el) => el.id);
-        if (selectedIds.length > 0) selectElements(selectedIds);
-        else selectElement(null);
-      } else {
-        selectElement(null);
+    finishDraw();
+  }, [isDraggingStage, finishDraw]);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TOUCH events (mobile) — attached to the stage container via useEffect
+  // ══════════════════════════════════════════════════════════════════════════
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const container = stage.container();
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (isAnyTextEditingRef.current) return;
+
+      // Two-finger = pan
+      if (e.touches.length === 2) {
+        isPanningRef.current = true;
+        return;
       }
-      setSelectionBox(null);
-      setIsDrawing(false);
-      return;
-    }
-    if (!isDrawing || !currentElement) return;
-    if (
-      ["rectangle", "circle", "triangle", "diamond"].includes(
-        currentElement.type || "",
-      )
-    ) {
-      if ((currentElement.width || 0) > 5 && (currentElement.height || 0) > 5)
-        addElement(currentElement as WhiteboardElement);
-    } else if (
-      ["line", "arrow", "pencil"].includes(currentElement.type || "")
-    ) {
-      addElement(currentElement as WhiteboardElement);
-    } else if (currentElement.type === "polygon") {
-      const sides = (currentElement as any).sides || 6;
-      const w = currentElement.width || 0,
-        h = currentElement.height || 0;
-      const cx = (currentElement.x || 0) + w / 2,
-        cy = (currentElement.y || 0) + h / 2,
-        r = Math.min(w, h) / 2;
-      const points = Array.from({ length: sides }).map((_, i) => {
-        const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
-        return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
-      });
-      addElement({
-        id: currentElement.id as string,
-        type: "polygon",
-        x: currentElement.x || 0,
-        y: currentElement.y || 0,
-        points,
-        strokeColor: currentElement.strokeColor,
-        fillColor: currentElement.fillColor,
-        strokeWidth: currentElement.strokeWidth,
-      } as WhiteboardElement);
-    }
-    setIsDrawing(false);
-    setCurrentElement(null);
-  }, [
-    isDraggingStage,
-    isDrawing,
-    currentElement,
-    selectedTool,
-    selectionBox,
-    elements,
-    elementIntersectsBox,
-    selectElement,
-    selectElements,
-    addElement,
-  ]);
+
+      const touch = e.touches[0];
+      const pos = getTouchPos(touch);
+
+      // Store for panning reference
+      lastTouchPosRef.current = { x: touch.clientX, y: touch.clientY };
+
+      // Determine if touch is on a Konva shape by checking what's under the finger
+      // We do a simple hittest: use Konva's getIntersection
+      const stagePos = stage.position();
+      const stageScale = stage.scaleX();
+      const container2 = stage.container().getBoundingClientRect();
+      const rawX = touch.clientX - container2.left;
+      const rawY = touch.clientY - container2.top;
+      const hit = stage.getIntersection({
+        x: rawX,
+        y: rawY,
+      }) as Konva.Node | null;
+      const isOnStage = !hit || hit === stage;
+
+      startDraw(pos, isOnStage);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault(); // prevent scroll while drawing
+
+      if (e.touches.length === 2 && isPanningRef.current) {
+        // Two-finger pan
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const midX = (t1.clientX + t2.clientX) / 2;
+        const midY = (t1.clientY + t2.clientY) / 2;
+        if (lastTouchPosRef.current) {
+          const dx = midX - lastTouchPosRef.current.x;
+          const dy = midY - lastTouchPosRef.current.y;
+          const newPos = { x: stage.x() + dx, y: stage.y() + dy };
+          setPosition(newPos);
+          stage.position(newPos);
+          stage.batchDraw();
+        }
+        lastTouchPosRef.current = { x: midX, y: midY };
+        return;
+      }
+
+      if (!isDrawing) return;
+      const touch = e.touches[0];
+      updateDraw(getTouchPos(touch));
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (isPanningRef.current && e.touches.length < 2) {
+        isPanningRef.current = false;
+        lastTouchPosRef.current = null;
+        return;
+      }
+      finishDraw();
+      lastTouchPosRef.current = null;
+    };
+
+    container.addEventListener("touchstart", onTouchStart, { passive: false });
+    container.addEventListener("touchmove", onTouchMove, { passive: false });
+    container.addEventListener("touchend", onTouchEnd, { passive: false });
+
+    return () => {
+      container.removeEventListener("touchstart", onTouchStart);
+      container.removeEventListener("touchmove", onTouchMove);
+      container.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [getTouchPos, startDraw, updateDraw, finishDraw, isDrawing]);
 
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
@@ -1903,185 +2565,181 @@ export default function Canvas() {
     [scale, applyZoom],
   );
 
+  const stageWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
+  const stageHeight = typeof window !== "undefined" ? window.innerHeight : 800;
+
   return (
     <div
-      className="w-full h-screen overflow-hidden relative"
       style={{
-        backgroundImage: `radial-gradient(circle, ${canvasBg.dotColor} 1.2px, transparent 1.2px)`,
-        backgroundSize: "26px 26px",
-        backgroundColor: canvasBg.color,
-        transition: "background-color 0.3s",
+        width: "100vw",
+        height: "100vh",
+        overflow: "hidden",
+        position: "relative",
       }}
     >
+      {/* Canvas background with dots - fixed to viewport, moves with pan */}
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 0,
+          pointerEvents: "none",
+          backgroundColor: canvasBg.color,
+          backgroundImage: `radial-gradient(circle, ${canvasBg.dotColor} 1px, transparent 1px)`,
+          backgroundSize: `${20 * scale}px ${20 * scale}px`,
+          backgroundPosition: `${position.x}px ${position.y}px`,
+        }}
+      />
       {/* Soft vignette overlay */}
       <div
         style={{
-          position: "absolute",
+          position: "fixed",
           inset: 0,
           pointerEvents: "none",
-          background:
-            "radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,0.035) 100%)",
           zIndex: 1,
+          background:
+            "radial-gradient(ellipse at center, transparent 60%, rgba(148,163,184,0.08) 100%)",
         }}
       />
 
       <Stage
         ref={stageRef}
-        width={typeof window !== "undefined" ? window.innerWidth : 1920}
-        height={typeof window !== "undefined" ? window.innerHeight : 1080}
+        width={stageWidth}
+        height={stageHeight}
+        scaleX={scale}
+        scaleY={scale}
+        x={position.x}
+        y={position.y}
+        style={{
+          position: "relative",
+          zIndex: 2,
+          cursor: isDraggingStage
+            ? "grabbing"
+            : selectedTool === "select"
+              ? "default"
+              : "crosshair",
+        }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onWheel={handleWheel}
-        x={position.x}
-        y={position.y}
-        scaleX={scale}
-        scaleY={scale}
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          zIndex: 2,
-          cursor: isDraggingStage ? "grabbing" : "default",
-        }}
       >
-        <Layer ref={layerRef} opacity={0.95}>
-          {elements.map((element) => (
-            <React.Fragment key={element.id}>
-              {element.type === "rectangle" && (
-                <RectShape
-                  element={element}
-                  isSelected={selectedElementIds.includes(element.id)}
-                  onSelect={selectElement}
-                  onTransformEnd={updateElement}
-                />
-              )}
-              {element.type === "circle" && (
-                <CircleShape
-                  element={element}
-                  isSelected={selectedElementIds.includes(element.id)}
-                  onSelect={selectElement}
-                  onTransformEnd={updateElement}
-                />
-              )}
-              {element.type === "line" && (
-                <LineShape
-                  element={element}
-                  isSelected={selectedElementIds.includes(element.id)}
-                  onSelect={selectElement}
-                  onTransformEnd={updateElement}
-                />
-              )}
-              {element.type === "arrow" && (
-                <ArrowShape
-                  element={element}
-                  isSelected={selectedElementIds.includes(element.id)}
-                  onSelect={selectElement}
-                  onTransformEnd={updateElement}
-                />
-              )}
-              {element.type === "triangle" && (
-                <TriangleShape
-                  element={element}
-                  isSelected={selectedElementIds.includes(element.id)}
-                  onSelect={selectElement}
-                  onTransformEnd={updateElement}
-                />
-              )}
-              {element.type === "diamond" && (
-                <DiamondShape
-                  element={element}
-                  isSelected={selectedElementIds.includes(element.id)}
-                  onSelect={selectElement}
-                  onTransformEnd={updateElement}
-                />
-              )}
-              {element.type === "polygon" && (
-                <PolygonShape
-                  element={element}
-                  isSelected={selectedElementIds.includes(element.id)}
-                  onSelect={selectElement}
-                  onTransformEnd={updateElement}
-                />
-              )}
-              {element.type === "pencil" && (
-                <PencilShape
-                  element={element}
-                  isSelected={selectedElementIds.includes(element.id)}
-                  onSelect={selectElement}
-                  onTransformEnd={updateElement}
-                />
-              )}
-              {element.type === "text" && (
-                <TextShape
-                  element={element}
-                  isSelected={selectedElementIds.includes(element.id)}
-                  onSelect={selectElement}
-                  onTransformEnd={updateElement}
-                  setTool={setTool}
-                  onEditingChange={handleEditingChange}
-                />
-              )}
-              {element.type === "sticky" && (
-                <StickyShape
-                  element={element}
-                  isSelected={selectedElementIds.includes(element.id)}
-                  onSelect={selectElement}
-                  onTransformEnd={updateElement}
-                  setTool={setTool}
-                  onEditingChange={handleEditingChange}
-                />
-              )}
-            </React.Fragment>
-          ))}
+        <Layer ref={layerRef}>
+          {elements.map((element) => {
+            const isSelected = selectedElementIds.includes(element.id);
+            const isSingleSelected =
+              isSelected && selectedElementIds.length === 1;
+            const sharedProps = {
+              element,
+              isSelected,
+              isSingleSelected,
+              onSelect: selectElement,
+              onTransformEnd: (id: string, attrs: Partial<WhiteboardElement>) =>
+                updateElement(id, attrs),
+              // Only pass onMultiDragEnd when multi-selected (single drag handles itself)
+              onMultiDragEnd:
+                selectedElementIds.length > 1 ? undefined : undefined,
+            };
+            return (
+              <React.Fragment key={element.id}>
+                {element.type === "rectangle" && <RectShape {...sharedProps} />}
+                {element.type === "circle" && <CircleShape {...sharedProps} />}
+                {element.type === "line" && <LineShape {...sharedProps} />}
+                {element.type === "arrow" && <ArrowShape {...sharedProps} />}
+                {element.type === "triangle" && (
+                  <TriangleShape {...sharedProps} />
+                )}
+                {element.type === "diamond" && (
+                  <DiamondShape {...sharedProps} />
+                )}
+                {element.type === "polygon" && (
+                  <PolygonShape {...sharedProps} />
+                )}
+                {element.type === "pencil" && <PencilShape {...sharedProps} />}
+                {element.type === "text" && (
+                  <TextShape
+                    {...sharedProps}
+                    setTool={setTool}
+                    onEditingChange={handleEditingChange}
+                  />
+                )}
+                {element.type === "sticky" && (
+                  <StickyShape
+                    {...sharedProps}
+                    setTool={setTool}
+                    onEditingChange={handleEditingChange}
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
 
+          {/* Unified multi-select box — shown when 2+ elements selected */}
+          {selectedElementIds.length > 1 && (
+            <MultiSelectBox
+              elements={elements}
+              selectedIds={selectedElementIds}
+              onDragAll={(dx, dy) =>
+                updateElements(selectedElementIds, { dx, dy })
+              }
+              onSelect={selectElement}
+            />
+          )}
+
+          {/* Selection box */}
           {isDrawing && selectedTool === "select" && selectionBox && (
             <Rect
               x={selectionBox.x}
               y={selectionBox.y}
               width={selectionBox.width}
               height={selectionBox.height}
-              stroke={COLORS.selection}
-              strokeWidth={2}
               fill={COLORS.selectionFill}
-              dash={[5, 5]}
+              stroke={COLORS.selection}
+              strokeWidth={1}
+              dash={[4, 3]}
               listening={false}
             />
           )}
 
+          {/* Preview while drawing */}
           {isDrawing && currentElement && (
             <>
               {currentElement.type === "rectangle" && (
                 <Rect
                   x={currentElement.x}
                   y={currentElement.y}
-                  width={currentElement.width}
-                  height={currentElement.height}
+                  width={currentElement.width || 0}
+                  height={currentElement.height || 0}
                   stroke={COLORS.selection}
                   strokeWidth={2}
-                  fill={COLORS.selectionFill}
-                  cornerRadius={8}
-                  opacity={0.7}
+                  fill={currentElement.fillColor || COLORS.selectionFill}
+                  cornerRadius={4}
+                  dash={[4, 3]}
                   listening={false}
+                  opacity={0.7}
                 />
               )}
-              {currentElement.type === "circle" && (
-                <Circle
-                  x={currentElement.x}
-                  y={currentElement.y}
-                  radius={
+              {currentElement.type === "circle" &&
+                (() => {
+                  const r =
                     Math.max(
                       currentElement.width || 0,
                       currentElement.height || 0,
-                    ) / 2
-                  }
-                  stroke={COLORS.selection}
-                  strokeWidth={2}
-                  fill={COLORS.selectionFill}
-                  opacity={0.7}
-                  listening={false}
-                />
-              )}
+                    ) / 2;
+                  return (
+                    <Circle
+                      x={(currentElement.x || 0) + r}
+                      y={(currentElement.y || 0) + r}
+                      radius={r}
+                      stroke={COLORS.selection}
+                      strokeWidth={2}
+                      fill={currentElement.fillColor || COLORS.selectionFill}
+                      dash={[4, 3]}
+                      listening={false}
+                      opacity={0.7}
+                    />
+                  );
+                })()}
               {(currentElement.type === "line" ||
                 currentElement.type === "arrow") && (
                 <Line
@@ -2103,20 +2761,16 @@ export default function Canvas() {
                     h = currentElement.height || 0;
                   return (
                     <Line
+                      x={currentElement.x}
+                      y={currentElement.y}
+                      points={[w / 2, 0, w, h, 0, h]}
                       closed
-                      points={[
-                        currentElement.x! + w / 2,
-                        currentElement.y!,
-                        currentElement.x! + w,
-                        currentElement.y! + h,
-                        currentElement.x!,
-                        currentElement.y! + h,
-                      ]}
                       stroke={COLORS.selection}
                       strokeWidth={2}
-                      fill={COLORS.selectionFill}
-                      opacity={0.7}
+                      fill={currentElement.fillColor || COLORS.selectionFill}
+                      dash={[4, 3]}
                       listening={false}
+                      opacity={0.7}
                     />
                   );
                 })()}
@@ -2126,22 +2780,16 @@ export default function Canvas() {
                     h = currentElement.height || 0;
                   return (
                     <Line
+                      x={currentElement.x}
+                      y={currentElement.y}
+                      points={[w / 2, 0, w, h / 2, w / 2, h, 0, h / 2]}
                       closed
-                      points={[
-                        currentElement.x! + w / 2,
-                        currentElement.y!,
-                        currentElement.x! + w,
-                        currentElement.y! + h / 2,
-                        currentElement.x! + w / 2,
-                        currentElement.y! + h,
-                        currentElement.x!,
-                        currentElement.y! + h / 2,
-                      ]}
                       stroke={COLORS.selection}
                       strokeWidth={2}
-                      fill={COLORS.selectionFill}
-                      opacity={0.7}
+                      fill={currentElement.fillColor || COLORS.selectionFill}
+                      dash={[4, 3]}
                       listening={false}
+                      opacity={0.7}
                     />
                   );
                 })()}
@@ -2160,13 +2808,14 @@ export default function Canvas() {
                   }
                   return (
                     <Line
-                      closed
                       points={pts}
+                      closed
                       stroke={COLORS.selection}
                       strokeWidth={2}
-                      fill={COLORS.selectionFill}
-                      opacity={0.7}
+                      fill={currentElement.fillColor || COLORS.selectionFill}
+                      dash={[4, 3]}
                       listening={false}
+                      opacity={0.7}
                     />
                   );
                 })()}
