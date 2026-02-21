@@ -13,6 +13,7 @@ import {
 } from "react-konva";
 import Konva from "konva";
 import { useStore, WhiteboardElement, ToolType } from "../store/useStore";
+import Toolbar from "./Toolbar";
 
 const COLORS = {
   stroke: "#94a3b8",
@@ -2594,288 +2595,299 @@ export default function Canvas() {
   const stageHeight = typeof window !== "undefined" ? window.innerHeight : 800;
 
   return (
-    <div
-      style={{
-        width: "100vw",
-        height: "100vh",
-        overflow: "hidden",
-        position: "relative",
-      }}
-    >
-      {/* Canvas background with dots - fixed to viewport, moves with pan */}
+    <>
+      <Toolbar />
       <div
         style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 0,
-          pointerEvents: "none",
-          backgroundColor: canvasBg.color,
-          backgroundImage: `radial-gradient(circle, ${canvasBg.dotColor} 1px, transparent 1px)`,
-          backgroundSize: `${20 * scale}px ${20 * scale}px`,
-          backgroundPosition: `${position.x}px ${position.y}px`,
-        }}
-      />
-      {/* Soft vignette overlay */}
-      <div
-        style={{
-          position: "fixed",
-          inset: 0,
-          pointerEvents: "none",
-          zIndex: 1,
-          background:
-            "radial-gradient(ellipse at center, transparent 60%, rgba(148,163,184,0.08) 100%)",
-        }}
-      />
-
-      <Stage
-        ref={stageRef}
-        width={stageWidth}
-        height={stageHeight}
-        scaleX={scale}
-        scaleY={scale}
-        x={position.x}
-        y={position.y}
-        style={{
+          width: "100vw",
+          height: "100vh",
+          overflow: "hidden",
           position: "relative",
-          zIndex: 2,
-          cursor: isDraggingStage
-            ? "grabbing"
-            : selectedTool === "select"
-              ? "default"
-              : "crosshair",
         }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onWheel={handleWheel}
       >
-        <Layer ref={layerRef}>
-          {elements.map((element) => {
-            const isSelected = selectedElementIds.includes(element.id);
-            const isSingleSelected =
-              isSelected && selectedElementIds.length === 1;
-            const sharedProps = {
-              element,
-              isSelected,
-              isSingleSelected,
-              onSelect: selectElement,
-              onTransformEnd: (id: string, attrs: Partial<WhiteboardElement>) =>
-                updateElement(id, attrs),
-              // Only pass onMultiDragEnd when multi-selected (single drag handles itself)
-              onMultiDragEnd:
-                selectedElementIds.length > 1 ? undefined : undefined,
-            };
-            return (
-              <React.Fragment key={element.id}>
-                {element.type === "rectangle" && <RectShape {...sharedProps} />}
-                {element.type === "circle" && <CircleShape {...sharedProps} />}
-                {element.type === "line" && <LineShape {...sharedProps} />}
-                {element.type === "arrow" && <ArrowShape {...sharedProps} />}
-                {element.type === "triangle" && (
-                  <TriangleShape {...sharedProps} />
-                )}
-                {element.type === "diamond" && (
-                  <DiamondShape {...sharedProps} />
-                )}
-                {element.type === "polygon" && (
-                  <PolygonShape {...sharedProps} />
-                )}
-                {element.type === "pencil" && <PencilShape {...sharedProps} />}
-                {element.type === "text" && (
-                  <TextShape
-                    {...sharedProps}
-                    setTool={setTool}
-                    onEditingChange={handleEditingChange}
+        {/* Canvas background with dots - fixed to viewport, moves with pan */}
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 0,
+            pointerEvents: "none",
+            backgroundColor: canvasBg.color,
+            backgroundImage: `radial-gradient(circle, ${canvasBg.dotColor} 1px, transparent 1px)`,
+            backgroundSize: `${20 * scale}px ${20 * scale}px`,
+            backgroundPosition: `${position.x}px ${position.y}px`,
+          }}
+        />
+        {/* Soft vignette overlay */}
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            pointerEvents: "none",
+            zIndex: 1,
+            background:
+              "radial-gradient(ellipse at center, transparent 60%, rgba(148,163,184,0.08) 100%)",
+          }}
+        />
+
+        <Stage
+          ref={stageRef}
+          width={stageWidth}
+          height={stageHeight}
+          scaleX={scale}
+          scaleY={scale}
+          x={position.x}
+          y={position.y}
+          style={{
+            position: "relative",
+            zIndex: 2,
+            cursor: isDraggingStage
+              ? "grabbing"
+              : selectedTool === "select"
+                ? "default"
+                : "crosshair",
+          }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onWheel={handleWheel}
+        >
+          <Layer ref={layerRef}>
+            {elements.map((element) => {
+              const isSelected = selectedElementIds.includes(element.id);
+              const isSingleSelected =
+                isSelected && selectedElementIds.length === 1;
+              const sharedProps = {
+                element,
+                isSelected,
+                isSingleSelected,
+                onSelect: selectElement,
+                onTransformEnd: (
+                  id: string,
+                  attrs: Partial<WhiteboardElement>,
+                ) => updateElement(id, attrs),
+                // Only pass onMultiDragEnd when multi-selected (single drag handles itself)
+                onMultiDragEnd:
+                  selectedElementIds.length > 1 ? undefined : undefined,
+              };
+              return (
+                <React.Fragment key={element.id}>
+                  {element.type === "rectangle" && (
+                    <RectShape {...sharedProps} />
+                  )}
+                  {element.type === "circle" && (
+                    <CircleShape {...sharedProps} />
+                  )}
+                  {element.type === "line" && <LineShape {...sharedProps} />}
+                  {element.type === "arrow" && <ArrowShape {...sharedProps} />}
+                  {element.type === "triangle" && (
+                    <TriangleShape {...sharedProps} />
+                  )}
+                  {element.type === "diamond" && (
+                    <DiamondShape {...sharedProps} />
+                  )}
+                  {element.type === "polygon" && (
+                    <PolygonShape {...sharedProps} />
+                  )}
+                  {element.type === "pencil" && (
+                    <PencilShape {...sharedProps} />
+                  )}
+                  {element.type === "text" && (
+                    <TextShape
+                      {...sharedProps}
+                      setTool={setTool}
+                      onEditingChange={handleEditingChange}
+                    />
+                  )}
+                  {element.type === "sticky" && (
+                    <StickyShape
+                      {...sharedProps}
+                      setTool={setTool}
+                      onEditingChange={handleEditingChange}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            })}
+
+            {/* Unified multi-select box — shown when 2+ elements selected */}
+            {selectedElementIds.length > 1 && (
+              <MultiSelectBox
+                elements={elements}
+                selectedIds={selectedElementIds}
+                onDragAll={(dx, dy) =>
+                  updateElements(selectedElementIds, { dx, dy })
+                }
+                onSelect={selectElement}
+              />
+            )}
+
+            {/* Selection box */}
+            {isDrawing && selectedTool === "select" && selectionBox && (
+              <Rect
+                x={selectionBox.x}
+                y={selectionBox.y}
+                width={selectionBox.width}
+                height={selectionBox.height}
+                fill={COLORS.selectionFill}
+                stroke={COLORS.selection}
+                strokeWidth={1}
+                dash={[4, 3]}
+                listening={false}
+              />
+            )}
+
+            {/* Preview while drawing */}
+            {isDrawing && currentElement && (
+              <>
+                {currentElement.type === "rectangle" && (
+                  <Rect
+                    x={currentElement.x}
+                    y={currentElement.y}
+                    width={currentElement.width || 0}
+                    height={currentElement.height || 0}
+                    stroke={COLORS.selection}
+                    strokeWidth={2}
+                    fill={currentElement.fillColor || COLORS.selectionFill}
+                    cornerRadius={4}
+                    dash={[4, 3]}
+                    listening={false}
+                    opacity={0.7}
                   />
                 )}
-                {element.type === "sticky" && (
-                  <StickyShape
-                    {...sharedProps}
-                    setTool={setTool}
-                    onEditingChange={handleEditingChange}
+                {currentElement.type === "circle" &&
+                  (() => {
+                    const r =
+                      Math.max(
+                        currentElement.width || 0,
+                        currentElement.height || 0,
+                      ) / 2;
+                    return (
+                      <Circle
+                        x={(currentElement.x || 0) + r}
+                        y={(currentElement.y || 0) + r}
+                        radius={r}
+                        stroke={COLORS.selection}
+                        strokeWidth={2}
+                        fill={currentElement.fillColor || COLORS.selectionFill}
+                        dash={[4, 3]}
+                        listening={false}
+                        opacity={0.7}
+                      />
+                    );
+                  })()}
+                {(currentElement.type === "line" ||
+                  currentElement.type === "arrow") && (
+                  <Line
+                    points={(currentElement.points || []).flatMap((p) => [
+                      p.x,
+                      p.y,
+                    ])}
+                    stroke={COLORS.selection}
+                    strokeWidth={2}
+                    lineCap="round"
+                    lineJoin="round"
+                    opacity={0.7}
+                    listening={false}
                   />
                 )}
-              </React.Fragment>
-            );
-          })}
+                {currentElement.type === "triangle" &&
+                  (() => {
+                    const w = currentElement.width || 0,
+                      h = currentElement.height || 0;
+                    return (
+                      <Line
+                        x={currentElement.x}
+                        y={currentElement.y}
+                        points={[w / 2, 0, w, h, 0, h]}
+                        closed
+                        stroke={COLORS.selection}
+                        strokeWidth={2}
+                        fill={currentElement.fillColor || COLORS.selectionFill}
+                        dash={[4, 3]}
+                        listening={false}
+                        opacity={0.7}
+                      />
+                    );
+                  })()}
+                {currentElement.type === "diamond" &&
+                  (() => {
+                    const w = currentElement.width || 0,
+                      h = currentElement.height || 0;
+                    return (
+                      <Line
+                        x={currentElement.x}
+                        y={currentElement.y}
+                        points={[w / 2, 0, w, h / 2, w / 2, h, 0, h / 2]}
+                        closed
+                        stroke={COLORS.selection}
+                        strokeWidth={2}
+                        fill={currentElement.fillColor || COLORS.selectionFill}
+                        dash={[4, 3]}
+                        listening={false}
+                        opacity={0.7}
+                      />
+                    );
+                  })()}
+                {currentElement.type === "polygon" &&
+                  (() => {
+                    const sides = (currentElement as any).sides || 6,
+                      w = currentElement.width || 0,
+                      h = currentElement.height || 0;
+                    const cx = (currentElement.x || 0) + w / 2,
+                      cy = (currentElement.y || 0) + h / 2,
+                      r = Math.min(w, h) / 2;
+                    const pts: number[] = [];
+                    for (let i = 0; i < sides; i++) {
+                      const a = (i / sides) * Math.PI * 2 - Math.PI / 2;
+                      pts.push(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+                    }
+                    return (
+                      <Line
+                        points={pts}
+                        closed
+                        stroke={COLORS.selection}
+                        strokeWidth={2}
+                        fill={currentElement.fillColor || COLORS.selectionFill}
+                        dash={[4, 3]}
+                        listening={false}
+                        opacity={0.7}
+                      />
+                    );
+                  })()}
+                {currentElement.type === "pencil" && (
+                  <Line
+                    points={(currentElement.points || []).flatMap((p) => [
+                      p.x,
+                      p.y,
+                    ])}
+                    stroke={COLORS.selection}
+                    strokeWidth={2}
+                    lineCap="round"
+                    lineJoin="round"
+                    tension={0.5}
+                    opacity={0.7}
+                    listening={false}
+                  />
+                )}
+              </>
+            )}
+          </Layer>
+        </Stage>
 
-          {/* Unified multi-select box — shown when 2+ elements selected */}
-          {selectedElementIds.length > 1 && (
-            <MultiSelectBox
-              elements={elements}
-              selectedIds={selectedElementIds}
-              onDragAll={(dx, dy) =>
-                updateElements(selectedElementIds, { dx, dy })
-              }
-              onSelect={selectElement}
-            />
-          )}
-
-          {/* Selection box */}
-          {isDrawing && selectedTool === "select" && selectionBox && (
-            <Rect
-              x={selectionBox.x}
-              y={selectionBox.y}
-              width={selectionBox.width}
-              height={selectionBox.height}
-              fill={COLORS.selectionFill}
-              stroke={COLORS.selection}
-              strokeWidth={1}
-              dash={[4, 3]}
-              listening={false}
-            />
-          )}
-
-          {/* Preview while drawing */}
-          {isDrawing && currentElement && (
-            <>
-              {currentElement.type === "rectangle" && (
-                <Rect
-                  x={currentElement.x}
-                  y={currentElement.y}
-                  width={currentElement.width || 0}
-                  height={currentElement.height || 0}
-                  stroke={COLORS.selection}
-                  strokeWidth={2}
-                  fill={currentElement.fillColor || COLORS.selectionFill}
-                  cornerRadius={4}
-                  dash={[4, 3]}
-                  listening={false}
-                  opacity={0.7}
-                />
-              )}
-              {currentElement.type === "circle" &&
-                (() => {
-                  const r =
-                    Math.max(
-                      currentElement.width || 0,
-                      currentElement.height || 0,
-                    ) / 2;
-                  return (
-                    <Circle
-                      x={(currentElement.x || 0) + r}
-                      y={(currentElement.y || 0) + r}
-                      radius={r}
-                      stroke={COLORS.selection}
-                      strokeWidth={2}
-                      fill={currentElement.fillColor || COLORS.selectionFill}
-                      dash={[4, 3]}
-                      listening={false}
-                      opacity={0.7}
-                    />
-                  );
-                })()}
-              {(currentElement.type === "line" ||
-                currentElement.type === "arrow") && (
-                <Line
-                  points={(currentElement.points || []).flatMap((p) => [
-                    p.x,
-                    p.y,
-                  ])}
-                  stroke={COLORS.selection}
-                  strokeWidth={2}
-                  lineCap="round"
-                  lineJoin="round"
-                  opacity={0.7}
-                  listening={false}
-                />
-              )}
-              {currentElement.type === "triangle" &&
-                (() => {
-                  const w = currentElement.width || 0,
-                    h = currentElement.height || 0;
-                  return (
-                    <Line
-                      x={currentElement.x}
-                      y={currentElement.y}
-                      points={[w / 2, 0, w, h, 0, h]}
-                      closed
-                      stroke={COLORS.selection}
-                      strokeWidth={2}
-                      fill={currentElement.fillColor || COLORS.selectionFill}
-                      dash={[4, 3]}
-                      listening={false}
-                      opacity={0.7}
-                    />
-                  );
-                })()}
-              {currentElement.type === "diamond" &&
-                (() => {
-                  const w = currentElement.width || 0,
-                    h = currentElement.height || 0;
-                  return (
-                    <Line
-                      x={currentElement.x}
-                      y={currentElement.y}
-                      points={[w / 2, 0, w, h / 2, w / 2, h, 0, h / 2]}
-                      closed
-                      stroke={COLORS.selection}
-                      strokeWidth={2}
-                      fill={currentElement.fillColor || COLORS.selectionFill}
-                      dash={[4, 3]}
-                      listening={false}
-                      opacity={0.7}
-                    />
-                  );
-                })()}
-              {currentElement.type === "polygon" &&
-                (() => {
-                  const sides = (currentElement as any).sides || 6,
-                    w = currentElement.width || 0,
-                    h = currentElement.height || 0;
-                  const cx = (currentElement.x || 0) + w / 2,
-                    cy = (currentElement.y || 0) + h / 2,
-                    r = Math.min(w, h) / 2;
-                  const pts: number[] = [];
-                  for (let i = 0; i < sides; i++) {
-                    const a = (i / sides) * Math.PI * 2 - Math.PI / 2;
-                    pts.push(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-                  }
-                  return (
-                    <Line
-                      points={pts}
-                      closed
-                      stroke={COLORS.selection}
-                      strokeWidth={2}
-                      fill={currentElement.fillColor || COLORS.selectionFill}
-                      dash={[4, 3]}
-                      listening={false}
-                      opacity={0.7}
-                    />
-                  );
-                })()}
-              {currentElement.type === "pencil" && (
-                <Line
-                  points={(currentElement.points || []).flatMap((p) => [
-                    p.x,
-                    p.y,
-                  ])}
-                  stroke={COLORS.selection}
-                  strokeWidth={2}
-                  lineCap="round"
-                  lineJoin="round"
-                  tension={0.5}
-                  opacity={0.7}
-                  listening={false}
-                />
-              )}
-            </>
-          )}
-        </Layer>
-      </Stage>
-
-      <ControlPanel
-        scale={scale}
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
-        onResetZoom={handleResetZoom}
-        canvasBg={canvasBg}
-        onBgChange={setCanvasBg}
-        strokeColor={elementStrokeColor}
-        onStrokeColorChange={setElementStrokeColor}
-        fillColor={elementFillColor}
-        onFillColorChange={setElementFillColor}
-      />
-    </div>
+        <ControlPanel
+          scale={scale}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onResetZoom={handleResetZoom}
+          canvasBg={canvasBg}
+          onBgChange={setCanvasBg}
+          strokeColor={elementStrokeColor}
+          onStrokeColorChange={setElementStrokeColor}
+          fillColor={elementFillColor}
+          onFillColorChange={setElementFillColor}
+        />
+      </div>
+    </>
   );
 }
