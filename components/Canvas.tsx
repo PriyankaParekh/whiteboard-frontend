@@ -1950,19 +1950,150 @@ export default function Canvas({ id }: { id: string }) {
     Map<string, { x: number; y: number; points?: { x: number; y: number }[] }>
   >(new Map());
   const multiDragAnchorRef = useRef<{ x: number; y: number } | null>(null);
+  // --- Autosave state and helpers (declared early so socket handlers can use them)
+  const [autoSaveStatus, setAutoSaveStatus] = React.useState<
+    "idle" | "pending" | "saving" | "saved"
+  >("idle");
+  const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
+  const saveTimerRef = useRef<number | null>(null);
+  const lastSentSnapshotRef = useRef<Map<string, string>>(new Map());
   useEffect(() => {
     socket.connect();
     socket.emit("join_room", id);
 
+    // When server sends full canvas (on join)
+    const handleLoad = (data: WhiteboardElement[]) => {
+      // dedupe by id keeping last occurrence (server may contain multiple versions)
+      const map = new Map<string, WhiteboardElement>();
+      for (const item of data) map.set(item.id, item);
+      const deduped = Array.from(map.values());
+      useStore.getState().setElements(deduped);
+      // reset lastSentSnapshot to reflect what's on server
+      const snapshot = lastSentSnapshotRef.current;
+      snapshot.clear();
+      for (const el of deduped) snapshot.set(el.id, JSON.stringify(el));
+    };
+
+    socket.on("load_canvas", handleLoad);
+
+    // When other user draws/updates one element
+    const handleReceive = (el: WhiteboardElement) => {
+      const state = useStore.getState();
+      const exists = state.elements.find((e) => e.id === el.id);
+      if (exists) state.updateElement(el.id, el);
+      else state.addElement(el);
+      // update snapshot so we don't re-send same payload
+      lastSentSnapshotRef.current.set(el.id, JSON.stringify(el));
+    };
+
+    socket.on("receive_draw", handleReceive);
+
     return () => {
-      socket.off("load_canvas");
+      socket.off("load_canvas", handleLoad);
+      socket.off("receive_draw", handleReceive);
       socket.disconnect();
     };
   }, [id]);
 
+  const flushChanges = React.useCallback(
+    async (emitLeave = false) => {
+      const state = useStore.getState();
+      const changed: WhiteboardElement[] = [];
+      for (const el of state.elements) {
+        const str = JSON.stringify(el);
+        const prev = lastSentSnapshotRef.current.get(el.id);
+        if (!prev || prev !== str) {
+          changed.push(el);
+          lastSentSnapshotRef.current.set(el.id, str);
+        }
+      }
+      if (changed.length === 0) return;
+      try {
+        setAutoSaveStatus("saving");
+        // emit each changed element (backend appends to Redis)
+        for (const el of changed) {
+          socket.emit("draw_element", { roomId: id, element: el });
+        }
+        // optionally request server to persist Redis -> Mongo
+        if (emitLeave) socket.emit("leave_room", id);
+        setAutoSaveStatus("saved");
+        setLastSavedAt(Date.now());
+        setTimeout(() => setAutoSaveStatus("idle"), 1200);
+      } catch (err) {
+        console.error("Autosave failed", err);
+        setAutoSaveStatus("idle");
+      }
+    },
+    [id],
+  );
+
+  // debounce changes
+  useEffect(() => {
+    const handler = () => {
+      setAutoSaveStatus("pending");
+      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = window.setTimeout(() => {
+        flushChanges(false);
+        saveTimerRef.current = null;
+      }, 300); // 300ms idle for faster autosave
+    };
+    // subscribe to store changes via simple polling of elements reference
+    const unsub = useStore.subscribe(
+      (s) => s.elements,
+      () => {
+        handler();
+      },
+    );
+    return () => unsub();
+  }, [flushChanges]);
+
+  // Manual save handler (flush immediately and persist)
+  const handleManualSave = React.useCallback(async () => {
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    await flushChanges(true);
+  }, [flushChanges]);
+
   const handleEditingChange = useCallback((editing: boolean) => {
     isAnyTextEditingRef.current = editing;
   }, []);
+
+  const getStatusStyles = () => {
+    switch (autoSaveStatus) {
+      case "pending":
+        return {
+          bgColor: "rgba(253, 242, 233, 0.95)",
+          borderColor: "rgba(253, 195, 126, 0.4)",
+          textColor: "rgba(146, 95, 38, 0.9)",
+          spinnerColor: "rgba(251, 146, 60, 0.8)",
+        };
+      case "saving":
+        return {
+          bgColor: "rgba(225, 242, 254, 0.95)",
+          borderColor: "rgba(147, 197, 253, 0.4)",
+          textColor: "rgba(30, 58, 138, 0.9)",
+          spinnerColor: "rgba(59, 130, 246, 0.8)",
+        };
+      case "saved":
+        return {
+          bgColor: "rgba(236, 253, 245, 0.95)",
+          borderColor: "rgba(134, 239, 172, 0.4)",
+          textColor: "rgba(5, 107, 47, 0.9)",
+          spinnerColor: "rgba(52, 211, 153, 0.8)",
+        };
+      default:
+        return {
+          bgColor: "rgba(241, 245, 249, 0.92)",
+          borderColor: "rgba(203, 213, 225, 0.3)",
+          textColor: "rgba(71, 85, 105, 0.75)",
+          spinnerColor: "rgba(148, 163, 184, 0.7)",
+        };
+    }
+  };
+
+  const styles = getStatusStyles();
 
   // ── Multi-element drag: when dragging one selected element, move all selected ──
   const handleMultiDragEnd = useCallback(
@@ -2363,12 +2494,16 @@ export default function Canvas({ id }: { id: string }) {
       if ((currentElement.width || 0) > 5 && (currentElement.height || 0) > 5) {
         addElement(currentElement as WhiteboardElement);
         addedId = currentElement.id as string;
+        // Fast autosave: flush this new element to server/Redis immediately
+        void flushChanges(false);
       }
     } else if (
       ["line", "arrow", "pencil"].includes(currentElement.type || "")
     ) {
       addElement(currentElement as WhiteboardElement);
       addedId = currentElement.id as string;
+      // Fast autosave for strokes/lines
+      void flushChanges(false);
     } else if (currentElement.type === "polygon") {
       const sides = (currentElement as any).sides || 6;
       const w = currentElement.width || 0,
@@ -2615,6 +2750,163 @@ export default function Canvas({ id }: { id: string }) {
           position: "relative",
         }}
       >
+        {/* Save controls */}
+
+        <div
+          style={{
+            position: "fixed",
+            right: 20,
+            top: 20,
+            zIndex: 60,
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          {/* Save Button */}
+          <button
+            onClick={handleManualSave}
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(236, 240, 241, 0.9) 0%, rgba(207, 216, 220, 0.9) 100%)",
+              color: "rgba(52, 73, 94, 0.95)",
+              padding: "10px 18px",
+              borderRadius: 12,
+              border: "1px solid rgba(189, 195, 199, 0.3)",
+              boxShadow:
+                "0 8px 20px rgba(174, 190, 205, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.8)",
+              cursor: "pointer",
+              fontWeight: 600,
+              fontSize: 14,
+              transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+              fontFamily:
+                "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+              letterSpacing: "-0.3px",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-3px)";
+              e.currentTarget.style.boxShadow =
+                "0 12px 28px rgba(174, 190, 205, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.8)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow =
+                "0 8px 20px rgba(174, 190, 205, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.8)";
+            }}
+          >
+            Save
+          </button>
+
+          {/* Status Badge */}
+          <div
+            style={{
+              minWidth: 130,
+              padding: "10px 16px",
+              borderRadius: 12,
+              background: styles.bgColor,
+              border: `1.5px solid ${styles.borderColor}`,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              fontSize: 13,
+              color: styles.textColor,
+              fontWeight: 500,
+              transition: "all 0.3s ease-out",
+              backdropFilter: "blur(8px)",
+              fontFamily:
+                "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+              boxShadow: `inset 0 1px 2px rgba(255, 255, 255, 0.5), 0 4px 12px ${styles.spinnerColor}20`,
+              animation:
+                autoSaveStatus === "saving" || autoSaveStatus === "pending"
+                  ? "soft-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite"
+                  : "none",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                width: "100%",
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                style={{
+                  animation:
+                    autoSaveStatus === "saving" || autoSaveStatus === "pending"
+                      ? "spin 1.5s linear infinite"
+                      : "none",
+                  color: styles.spinnerColor,
+                  flexShrink: 0,
+                }}
+              >
+                {autoSaveStatus === "pending" && (
+                  <circle cx="12" cy="12" r="10" />
+                )}
+                {autoSaveStatus === "saving" && (
+                  <>
+                    <circle cx="12" cy="12" r="10" opacity="0.3" />
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
+                  </>
+                )}
+                {autoSaveStatus === "saved" && (
+                  <polyline points="20 6 9 17 4 12" />
+                )}
+                {autoSaveStatus === "idle" && (
+                  <polyline points="20 6 9 17 4 12" />
+                )}
+              </svg>
+              <span
+                style={{
+                  whiteSpace: "nowrap",
+                  fontSize: 13,
+                  fontWeight: 500,
+                }}
+              >
+                {autoSaveStatus === "pending" && "Pending…"}
+                {autoSaveStatus === "saving" && "Saving…"}
+                {autoSaveStatus === "saved" && "Saved"}
+                {autoSaveStatus === "idle" && "All saved"}
+              </span>
+            </div>
+
+            {autoSaveStatus === "saved" && lastSavedAt && (
+              <span
+                style={{
+                  fontSize: 11,
+                  opacity: 0.65,
+                  marginLeft: "auto",
+                  whiteSpace: "nowrap",
+                  fontWeight: 400,
+                }}
+              >
+                {new Date(lastSavedAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+            )}
+          </div>
+
+          <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes soft-pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
+        }
+      `}</style>
+        </div>
+
         {/* Canvas background with dots - fixed to viewport, moves with pan */}
         <div
           style={{

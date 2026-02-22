@@ -47,6 +47,7 @@ interface CanvasStore {
   elementStrokeColor: string;
   elementFillColor: string;
   addElement: (el: WhiteboardElement) => void;
+  setElements: (els: WhiteboardElement[]) => void;
   updateElement: (id: string, el: Partial<WhiteboardElement>) => void;
   updateElements: (ids: string[], delta: { dx: number; dy: number }) => void;
   deleteElement: (id: string) => void;
@@ -204,6 +205,11 @@ export const useStore = create<CanvasStore>((set, get) => ({
     }),
 
   setTool: (tool) => set(() => ({ selectedTool: tool })),
+  setElements: (els) =>
+    set(() => {
+      const newHistory = [els];
+      return { elements: els, history: newHistory, historyIndex: 0 };
+    }),
   setStickyNoteColor: (color) => set(() => ({ stickyNoteColor: color })),
   setElementStrokeColor: (color) => set(() => ({ elementStrokeColor: color })),
   setElementFillColor: (color) => set(() => ({ elementFillColor: color })),
