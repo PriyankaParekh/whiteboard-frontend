@@ -14,6 +14,7 @@ import {
 import Konva from "konva";
 import { useStore, WhiteboardElement, ToolType } from "../store/useStore";
 import Toolbar from "./Toolbar";
+import { socket } from "@/socket/connection";
 
 const COLORS = {
   stroke: "#94a3b8",
@@ -1900,7 +1901,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
 };
 
 // ─── Main Canvas ─────────────────────────────────────────────────────────────
-export default function Canvas() {
+export default function Canvas({ id }: { id: string }) {
   const {
     elements,
     selectedTool,
@@ -1949,6 +1950,15 @@ export default function Canvas() {
     Map<string, { x: number; y: number; points?: { x: number; y: number }[] }>
   >(new Map());
   const multiDragAnchorRef = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    socket.connect();
+    socket.emit("join_room", id);
+
+    return () => {
+      socket.off("load_canvas");
+      socket.disconnect();
+    };
+  }, [id]);
 
   const handleEditingChange = useCallback((editing: boolean) => {
     isAnyTextEditingRef.current = editing;
