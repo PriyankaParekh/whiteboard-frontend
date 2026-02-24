@@ -1,0 +1,12 @@
+export { default as RectShape } from "./RectShape";
+export { default as CircleShape } from "./CircleShape";
+export { default as LineShape } from "./LineShape";
+export { default as ArrowShape } from "./ArrowShape";
+export { default as TriangleShape } from "./TriangleShape";
+export { default as DiamondShape } from "./DiamondShape";
+export { default as PolygonShape } from "./PolygonShape";
+export { default as PencilShape } from "./PencilShape";
+export { default as TextShape } from "./TextShape";
+export { default as StickyShape } from "./StickyShape";
+export { COLORS } from "./shared";
+export type { ShapeProps } from "./shared";

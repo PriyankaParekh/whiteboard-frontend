@@ -15,992 +15,27 @@ import Konva from "konva";
 import { useStore, WhiteboardElement, ToolType } from "../store/useStore";
 import Toolbar from "./Toolbar";
 import { socket } from "@/socket/connection";
+import {
+  RectShape,
+  CircleShape,
+  LineShape,
+  ArrowShape,
+  TriangleShape,
+  DiamondShape,
+  PolygonShape,
+  PencilShape,
+  TextShape,
+  StickyShape,
+} from "./shapes";
+import {
+  COLORS,
+  ELEMENT_STROKE_COLORS,
+  ELEMENT_FILL_COLORS,
+  CANVAS_BG_COLORS,
+  getStickyNoteStrokeColor,
+} from "../utils/constant";
 
-const COLORS = {
-  stroke: "#94a3b8",
-  fill: "transparent",
-  accent: "#cbd5e1",
-  canvasBg: "#f1f5f9",
-  selection: "#3b82f6",
-  selectionFill: "rgba(59, 130, 246, 0.08)",
-};
-
-export const STICKY_NOTE_COLORS = [
-  { fill: "#fef3c7", stroke: "#fcd34d", name: "Yellow" },
-  { fill: "#dbeafe", stroke: "#93c5fd", name: "Blue" },
-  { fill: "#fce7f3", stroke: "#f9a8d4", name: "Pink" },
-  { fill: "#d1fae5", stroke: "#6ee7b7", name: "Green" },
-  { fill: "#e9d5ff", stroke: "#c084fc", name: "Purple" },
-];
-
-export const ELEMENT_STROKE_COLORS = [
-  { color: "#94a3b8", name: "Slate" },
-  { color: "#3b82f6", name: "Blue" },
-  { color: "#8b5cf6", name: "Purple" },
-  { color: "#ec4899", name: "Pink" },
-  { color: "#10b981", name: "Emerald" },
-  { color: "#f59e0b", name: "Amber" },
-  { color: "#ef4444", name: "Red" },
-  { color: "#1e293b", name: "Dark" },
-];
-
-export const ELEMENT_FILL_COLORS = [
-  { color: "transparent", name: "None" },
-  { color: "#f1f5f9", name: "Slate" },
-  { color: "#dbeafe", name: "Blue" },
-  { color: "#e9d5ff", name: "Purple" },
-  { color: "#fce7f3", name: "Pink" },
-  { color: "#d1fae5", name: "Green" },
-  { color: "#fef3c7", name: "Yellow" },
-  { color: "#fee2e2", name: "Red" },
-];
-
-export const CANVAS_BG_COLORS = [
-  { color: "#f1f5f9", name: "Slate", dotColor: "#cbd5e1" },
-  { color: "#fafafa", name: "White", dotColor: "#e4e4e7" },
-  { color: "#fef9f0", name: "Cream", dotColor: "#fcd34d" },
-  { color: "#f0f9ff", name: "Sky", dotColor: "#bae6fd" },
-  { color: "#fdf4ff", name: "Lavender", dotColor: "#e879f9" },
-  { color: "#f0fdf4", name: "Mint", dotColor: "#86efac" },
-];
-
-function getStickyNoteStrokeColor(fillColor: string): string {
-  const color = STICKY_NOTE_COLORS.find((c) => c.fill === fillColor);
-  return color ? color.stroke : "#fcd34d";
-}
-
-interface ShapeProps {
-  element: WhiteboardElement;
-  isSelected: boolean;
-  isSingleSelected: boolean; // true only when this is the ONLY selected element
-  onSelect: (id: string | null, additive?: boolean) => void;
-  onTransformEnd: (id: string, newAttrs: Partial<WhiteboardElement>) => void;
-  onMultiDragEnd?: (id: string, newX: number, newY: number) => void;
-  setTool?: (tool: ToolType) => void;
-  onEditingChange?: (isEditing: boolean) => void;
-}
-
-function getShiftKey(evt: MouseEvent | TouchEvent): boolean {
-  return (evt as MouseEvent).shiftKey ?? false;
-}
-
-function computeArrowHead(
-  a: { x: number; y: number },
-  b: { x: number; y: number },
-) {
-  const dx = b.x - a.x,
-    dy = b.y - a.y;
-  const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  const ux = dx / len,
-    uy = dy / len;
-  const size = 12;
-  const hx = b.x - ux * size,
-    hy = b.y - uy * size;
-  const px = -uy * (size * 0.6),
-    py = ux * (size * 0.6);
-  return [b.x, b.y, hx + px, hy + py, hx - px, hy - py];
-}
-
-const RectShape: React.FC<ShapeProps> = ({
-  element,
-  isSelected,
-  isSingleSelected,
-  onSelect,
-  onTransformEnd,
-  onMultiDragEnd,
-}) => {
-  const rectRef = useRef<Konva.Rect>(null);
-  const trRef = useRef<Konva.Transformer>(null);
-
-  useEffect(() => {
-    if (isSingleSelected && trRef.current && rectRef.current) {
-      trRef.current.nodes([rectRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [isSingleSelected]);
-
-  return (
-    <>
-      <Rect
-        ref={rectRef}
-        x={element.x}
-        y={element.y}
-        width={element.width || 0}
-        height={element.height || 0}
-        stroke={
-          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
-        }
-        strokeWidth={element.strokeWidth || 2}
-        fill={element.fillColor || COLORS.fill}
-        cornerRadius={4}
-        draggable={isSelected}
-        onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onDragEnd={(e) => {
-          const nx = e.target.x(),
-            ny = e.target.y();
-          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
-          else onTransformEnd(element.id, { x: nx, y: ny });
-        }}
-        onTransformEnd={() => {
-          const node = rectRef.current;
-          if (node) {
-            onTransformEnd(element.id, {
-              x: node.x(),
-              y: node.y(),
-              width: Math.max(5, node.width() * node.scaleX()),
-              height: Math.max(5, node.height() * node.scaleY()),
-            });
-            node.scaleX(1);
-            node.scaleY(1);
-          }
-        }}
-      />
-      {isSingleSelected && (
-        <Transformer
-          ref={trRef}
-          rotateEnabled={false}
-          borderStroke={COLORS.selection}
-          borderStrokeWidth={1.5}
-          anchorStroke={COLORS.selection}
-          anchorFill="white"
-          anchorSize={8}
-          anchorCornerRadius={2}
-        />
-      )}
-    </>
-  );
-};
-
-const CircleShape: React.FC<ShapeProps> = ({
-  element,
-  isSelected,
-  isSingleSelected,
-  onSelect,
-  onTransformEnd,
-  onMultiDragEnd,
-}) => {
-  const circleRef = useRef<Konva.Circle>(null);
-  const trRef = useRef<Konva.Transformer>(null);
-
-  useEffect(() => {
-    if (isSingleSelected && trRef.current && circleRef.current) {
-      trRef.current.nodes([circleRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [isSingleSelected]);
-
-  const radius = Math.max(element.width || 50, element.height || 50) / 2;
-
-  return (
-    <>
-      <Circle
-        ref={circleRef}
-        x={element.x + radius}
-        y={element.y + radius}
-        radius={radius}
-        stroke={
-          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
-        }
-        strokeWidth={element.strokeWidth || 2}
-        fill={element.fillColor || COLORS.fill}
-        draggable={isSelected}
-        onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onDragEnd={(e) => {
-          const nx = e.target.x() - radius,
-            ny = e.target.y() - radius;
-          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
-          else onTransformEnd(element.id, { x: nx, y: ny });
-        }}
-        onTransformEnd={() => {
-          const node = circleRef.current;
-          if (node) {
-            const newRadius = node.radius() * node.scaleX();
-            onTransformEnd(element.id, {
-              x: node.x() - newRadius,
-              y: node.y() - newRadius,
-              width: Math.max(10, newRadius * 2),
-              height: Math.max(10, newRadius * 2),
-            });
-            node.scaleX(1);
-            node.scaleY(1);
-          }
-        }}
-      />
-      {isSingleSelected && (
-        <Transformer
-          ref={trRef}
-          rotateEnabled={false}
-          borderStroke={COLORS.selection}
-          borderStrokeWidth={1.5}
-          anchorStroke={COLORS.selection}
-          anchorFill="white"
-          anchorSize={8}
-          anchorCornerRadius={2}
-        />
-      )}
-    </>
-  );
-};
-
-const LineShape: React.FC<ShapeProps> = ({
-  element,
-  isSelected,
-  isSingleSelected,
-  onSelect,
-  onTransformEnd,
-  onMultiDragEnd,
-}) => {
-  const lineRef = useRef<Konva.Line>(null);
-  const trRef = useRef<Konva.Transformer>(null);
-
-  useEffect(() => {
-    if (isSingleSelected && trRef.current && lineRef.current) {
-      trRef.current.nodes([lineRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [isSingleSelected]);
-
-  const points = element.points || [];
-
-  return (
-    <>
-      <Line
-        ref={lineRef}
-        points={points.flatMap((p) => [p.x, p.y])}
-        stroke={
-          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
-        }
-        strokeWidth={element.strokeWidth || 2}
-        lineCap="round"
-        lineJoin="round"
-        draggable={isSelected}
-        onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onDragEnd={(e) => {
-          const node = lineRef.current;
-          if (node && element.points) {
-            const dx = node.x(),
-              dy = node.y();
-            onTransformEnd(element.id, {
-              x: 0,
-              y: 0,
-              points: element.points.map((p) => ({
-                x: p.x + dx,
-                y: p.y + dy,
-              })),
-            });
-            node.x(0);
-            node.y(0);
-          }
-        }}
-      />
-      {isSingleSelected && (
-        <Transformer
-          ref={trRef}
-          rotateEnabled={false}
-          borderStroke={COLORS.selection}
-          borderStrokeWidth={1.5}
-          anchorStroke={COLORS.selection}
-          anchorFill="white"
-          anchorSize={8}
-          anchorCornerRadius={2}
-        />
-      )}
-    </>
-  );
-};
-
-const ArrowShape: React.FC<ShapeProps> = ({
-  element,
-  isSelected,
-  isSingleSelected,
-  onSelect,
-  onTransformEnd,
-  onMultiDragEnd,
-}) => {
-  const groupRef = useRef<Konva.Group>(null);
-  const trRef = useRef<Konva.Transformer>(null);
-
-  useEffect(() => {
-    if (isSingleSelected && trRef.current && groupRef.current) {
-      trRef.current.nodes([groupRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [isSingleSelected]);
-
-  const points = element.points || [];
-
-  return (
-    <>
-      <Group
-        ref={groupRef}
-        draggable={isSingleSelected}
-        onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onDragEnd={(e) => {
-          const nx = e.target.x(),
-            ny = e.target.y();
-          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
-          else onTransformEnd(element.id, { x: nx, y: ny });
-        }}
-      >
-        <Line
-          points={points.flatMap((p) => [p.x, p.y])}
-          stroke={
-            isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
-          }
-          strokeWidth={element.strokeWidth || 2}
-          lineCap="round"
-          lineJoin="round"
-        />
-        {points.length >= 2 && (
-          <Line
-            points={computeArrowHead(
-              points[points.length - 2],
-              points[points.length - 1],
-            )}
-            stroke={
-              isSelected
-                ? COLORS.selection
-                : element.strokeColor || COLORS.stroke
-            }
-            strokeWidth={element.strokeWidth || 2}
-            fill={element.strokeColor || COLORS.stroke}
-            closed
-          />
-        )}
-      </Group>
-      {isSingleSelected && (
-        <Transformer
-          ref={trRef}
-          rotateEnabled={false}
-          borderStroke={COLORS.selection}
-          borderStrokeWidth={1.5}
-          anchorStroke={COLORS.selection}
-          anchorFill="white"
-          anchorSize={8}
-          anchorCornerRadius={2}
-        />
-      )}
-    </>
-  );
-};
-
-const TriangleShape: React.FC<ShapeProps> = ({
-  element,
-  isSelected,
-  isSingleSelected,
-  onSelect,
-  onTransformEnd,
-  onMultiDragEnd,
-}) => {
-  const polyRef = useRef<Konva.Line>(null);
-  const trRef = useRef<Konva.Transformer>(null);
-
-  useEffect(() => {
-    if (isSingleSelected && trRef.current && polyRef.current) {
-      trRef.current.nodes([polyRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [isSingleSelected]);
-
-  const width = element.width || 100,
-    height = element.height || 100;
-
-  return (
-    <>
-      <Line
-        ref={polyRef}
-        x={element.x}
-        y={element.y}
-        points={[width / 2, 0, width, height, 0, height]}
-        closed
-        stroke={
-          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
-        }
-        strokeWidth={element.strokeWidth || 2}
-        fill={element.fillColor || COLORS.fill}
-        draggable={isSelected}
-        onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onDragEnd={(e) => {
-          const nx = e.target.x(),
-            ny = e.target.y();
-          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
-          else onTransformEnd(element.id, { x: nx, y: ny });
-        }}
-        onTransformEnd={() => {
-          const node = polyRef.current;
-          if (node) {
-            onTransformEnd(element.id, {
-              x: node.x(),
-              y: node.y(),
-              width: Math.max(5, node.width() * node.scaleX()),
-              height: Math.max(5, node.height() * node.scaleY()),
-            });
-            node.scaleX(1);
-            node.scaleY(1);
-          }
-        }}
-      />
-      {isSingleSelected && (
-        <Transformer
-          ref={trRef}
-          rotateEnabled={false}
-          borderStroke={COLORS.selection}
-          borderStrokeWidth={1.5}
-          anchorStroke={COLORS.selection}
-          anchorFill="white"
-          anchorSize={8}
-          anchorCornerRadius={2}
-        />
-      )}
-    </>
-  );
-};
-
-const DiamondShape: React.FC<ShapeProps> = ({
-  element,
-  isSelected,
-  isSingleSelected,
-  onSelect,
-  onTransformEnd,
-  onMultiDragEnd,
-}) => {
-  const polyRef = useRef<Konva.Line>(null);
-  const trRef = useRef<Konva.Transformer>(null);
-
-  useEffect(() => {
-    if (isSingleSelected && trRef.current && polyRef.current) {
-      trRef.current.nodes([polyRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [isSingleSelected]);
-
-  const width = element.width || 100,
-    height = element.height || 100;
-
-  return (
-    <>
-      <Line
-        ref={polyRef}
-        x={element.x}
-        y={element.y}
-        points={[
-          width / 2,
-          0,
-          width,
-          height / 2,
-          width / 2,
-          height,
-          0,
-          height / 2,
-        ]}
-        closed
-        stroke={
-          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
-        }
-        strokeWidth={element.strokeWidth || 2}
-        fill={element.fillColor || COLORS.fill}
-        draggable={isSelected}
-        onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onDragEnd={(e) => {
-          const nx = e.target.x(),
-            ny = e.target.y();
-          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
-          else onTransformEnd(element.id, { x: nx, y: ny });
-        }}
-        onTransformEnd={() => {
-          const node = polyRef.current;
-          if (node) {
-            onTransformEnd(element.id, {
-              x: node.x(),
-              y: node.y(),
-              width: Math.max(5, node.width() * node.scaleX()),
-              height: Math.max(5, node.height() * node.scaleY()),
-            });
-            node.scaleX(1);
-            node.scaleY(1);
-          }
-        }}
-      />
-      {isSingleSelected && (
-        <Transformer
-          ref={trRef}
-          rotateEnabled={false}
-          borderStroke={COLORS.selection}
-          borderStrokeWidth={1.5}
-          anchorStroke={COLORS.selection}
-          anchorFill="white"
-          anchorSize={8}
-          anchorCornerRadius={2}
-        />
-      )}
-    </>
-  );
-};
-
-const PolygonShape: React.FC<ShapeProps> = ({
-  element,
-  isSelected,
-  isSingleSelected,
-  onSelect,
-  onTransformEnd,
-  onMultiDragEnd,
-}) => {
-  const lineRef = useRef<Konva.Line>(null);
-  const trRef = useRef<Konva.Transformer>(null);
-
-  useEffect(() => {
-    if (isSingleSelected && trRef.current && lineRef.current) {
-      trRef.current.nodes([lineRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [isSingleSelected]);
-
-  const points = element.points || [];
-  if (points.length === 0) return null;
-
-  const minX = Math.min(...points.map((p) => p.x));
-  const minY = Math.min(...points.map((p) => p.y));
-  const relativePoints = points.map((p) => [p.x - minX, p.y - minY]).flat();
-
-  return (
-    <>
-      <Line
-        ref={lineRef}
-        x={minX}
-        y={minY}
-        points={relativePoints}
-        closed
-        stroke={
-          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
-        }
-        strokeWidth={element.strokeWidth || 2}
-        fill={element.fillColor || COLORS.fill}
-        draggable={isSelected}
-        onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onDragEnd={(e) => {
-          const node = lineRef.current;
-          if (node && element.points) {
-            const dx = node.x() - minX,
-              dy = node.y() - minY;
-            const updatedPoints = element.points.map((p) => ({
-              x: p.x + dx,
-              y: p.y + dy,
-            }));
-            const newMinX = Math.min(...updatedPoints.map((p) => p.x));
-            const newMinY = Math.min(...updatedPoints.map((p) => p.y));
-            onTransformEnd(element.id, {
-              x: newMinX,
-              y: newMinY,
-              points: updatedPoints,
-            });
-            node.x(newMinX);
-            node.y(newMinY);
-          }
-        }}
-      />
-      {isSingleSelected && (
-        <Transformer
-          ref={trRef}
-          rotateEnabled={false}
-          borderStroke={COLORS.selection}
-          borderStrokeWidth={1.5}
-          anchorStroke={COLORS.selection}
-          anchorFill="white"
-          anchorSize={8}
-          anchorCornerRadius={2}
-        />
-      )}
-    </>
-  );
-};
-
-const PencilShape: React.FC<ShapeProps> = ({
-  element,
-  isSelected,
-  isSingleSelected,
-  onSelect,
-  onTransformEnd,
-  onMultiDragEnd,
-}) => {
-  const lineRef = useRef<Konva.Line>(null);
-  const trRef = useRef<Konva.Transformer>(null);
-
-  useEffect(() => {
-    if (isSingleSelected && trRef.current && lineRef.current) {
-      trRef.current.nodes([lineRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [isSingleSelected]);
-
-  const points = element.points || [];
-
-  return (
-    <>
-      <Line
-        ref={lineRef}
-        points={points.flatMap((p) => [p.x, p.y])}
-        stroke={
-          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
-        }
-        strokeWidth={element.strokeWidth || 2}
-        lineCap="round"
-        lineJoin="round"
-        tension={0.5}
-        draggable={isSelected}
-        onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
-        onDragEnd={(e) => {
-          const node = lineRef.current;
-          if (node && element.points) {
-            const dx = node.x(),
-              dy = node.y();
-            onTransformEnd(element.id, {
-              x: 0,
-              y: 0,
-              points: element.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
-            });
-            node.x(0);
-            node.y(0);
-          }
-        }}
-      />
-      {isSingleSelected && (
-        <Transformer
-          ref={trRef}
-          rotateEnabled={false}
-          borderStroke={COLORS.selection}
-          borderStrokeWidth={1.5}
-          anchorStroke={COLORS.selection}
-          anchorFill="white"
-          anchorSize={8}
-          anchorCornerRadius={2}
-        />
-      )}
-    </>
-  );
-};
-
-const TextShape: React.FC<ShapeProps> = ({
-  element,
-  isSelected,
-  isSingleSelected,
-  onSelect,
-  onTransformEnd,
-  onMultiDragEnd,
-  setTool,
-  onEditingChange,
-}) => {
-  const textRef = useRef<Konva.Text>(null);
-  const trRef = useRef<Konva.Transformer>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const lastClickTimeRef = useRef(0);
-  const isEditingRef = useRef(false);
-
-  useEffect(() => {
-    if (isSingleSelected && trRef.current && textRef.current && !isEditing) {
-      trRef.current.nodes([textRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [isSingleSelected, isEditing]);
-
-  const finishEditing = useCallback(
-    (newText: string) => {
-      if (!isEditingRef.current) return;
-      isEditingRef.current = false;
-      setIsEditing(false);
-      onEditingChange?.(false);
-      onTransformEnd(element.id, { text: newText });
-      setTool?.("select");
-    },
-    [element.id, onTransformEnd, onEditingChange, setTool],
-  );
-
-  useEffect(() => {
-    if (!isEditing) {
-      if (inputRef.current) {
-        inputRef.current.remove();
-        inputRef.current = null;
-      }
-      return;
-    }
-
-    isEditingRef.current = true;
-    if (!textRef.current) return;
-    const stage = textRef.current.getStage();
-    if (!stage) return;
-    const stageBox = stage.container().getBoundingClientRect();
-    const absPos = textRef.current.getAbsolutePosition();
-    const screenScale = stage.scaleX();
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = element.text || "";
-    input.style.cssText = `position:fixed;left:${stageBox.left + absPos.x}px;top:${stageBox.top + absPos.y}px;font-size:${(element.fontSize || 28) * screenScale}px;padding:4px 8px;border:2px solid ${COLORS.selection};background-color:white;z-index:10000;min-width:200px;outline:none;font-family:inherit;box-shadow:0 4px 12px rgba(0,0,0,0.15);border-radius:4px;`;
-    input.addEventListener("mousedown", (e) => e.stopPropagation());
-    input.addEventListener("pointerdown", (e) => e.stopPropagation());
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        e.stopPropagation();
-        finishEditing(input.value);
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        finishEditing(element.text || "");
-      }
-    });
-    input.addEventListener("blur", () => {
-      if (isEditingRef.current) finishEditing(input.value);
-    });
-    document.body.appendChild(input);
-    inputRef.current = input;
-    setTimeout(() => {
-      input.focus();
-      input.select();
-    }, 10);
-    return () => {
-      input.remove();
-      if (inputRef.current === input) inputRef.current = null;
-    };
-  }, [isEditing]);
-
-  const handleClick = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-      const now = Date.now();
-      const isDoubleClick = now - lastClickTimeRef.current < 400;
-      lastClickTimeRef.current = now;
-      if (isDoubleClick) {
-        e.evt.preventDefault();
-        e.evt.stopPropagation();
-        setIsEditing(true);
-        onEditingChange?.(true);
-        return;
-      }
-      onSelect(element.id, getShiftKey(e.evt));
-    },
-    [element.id, onSelect, onEditingChange],
-  );
-
-  return (
-    <>
-      {isSelected && !isSingleSelected && (
-        <Rect
-          x={element.x - 4}
-          y={element.y - 4}
-          width={(textRef.current?.width() || 100) + 8}
-          height={(textRef.current?.height() || 36) + 8}
-          fill="transparent"
-          stroke={COLORS.selection}
-          strokeWidth={1.5}
-          dash={[4, 3]}
-          cornerRadius={3}
-          listening={false}
-        />
-      )}
-      <KonvaText
-        ref={textRef}
-        x={element.x}
-        y={element.y}
-        text={element.text || "Text"}
-        fontSize={element.fontSize || 28}
-        fill={element.strokeColor || "#1e293b"}
-        draggable={isSingleSelected}
-        onClick={handleClick}
-        onTap={handleClick}
-        onDragEnd={(e) => {
-          const nx = e.target.x(),
-            ny = e.target.y();
-          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
-          else onTransformEnd(element.id, { x: nx, y: ny });
-        }}
-      />
-      {isSingleSelected && !isEditing && (
-        <Transformer
-          ref={trRef}
-          rotateEnabled={false}
-          borderStroke={COLORS.selection}
-          borderStrokeWidth={1.5}
-          anchorStroke={COLORS.selection}
-          anchorFill="white"
-          anchorSize={8}
-          anchorCornerRadius={2}
-        />
-      )}
-    </>
-  );
-};
-
-const StickyShape: React.FC<ShapeProps> = ({
-  element,
-  isSelected,
-  isSingleSelected,
-  onSelect,
-  onTransformEnd,
-  onMultiDragEnd,
-  setTool,
-  onEditingChange,
-}) => {
-  const groupRef = useRef<Konva.Group>(null);
-  const trRef = useRef<Konva.Transformer>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const lastClickTimeRef = useRef(0);
-  const isEditingRef = useRef(false);
-  const width = element.width || 180,
-    height = element.height || 180;
-
-  useEffect(() => {
-    if (isSingleSelected && trRef.current && groupRef.current && !isEditing) {
-      trRef.current.nodes([groupRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [isSingleSelected, isEditing]);
-
-  const finishEditing = useCallback(
-    (newText: string) => {
-      if (!isEditingRef.current) return;
-      isEditingRef.current = false;
-      setIsEditing(false);
-      onEditingChange?.(false);
-      onTransformEnd(element.id, { text: newText });
-      setTool?.("select");
-    },
-    [element.id, onTransformEnd, onEditingChange, setTool],
-  );
-
-  useEffect(() => {
-    if (!isEditing) {
-      if (textareaRef.current) {
-        textareaRef.current.remove();
-        textareaRef.current = null;
-      }
-      return;
-    }
-
-    isEditingRef.current = true;
-    if (!groupRef.current) return;
-    const stage = groupRef.current.getStage();
-    if (!stage) return;
-    const stageBox = stage.container().getBoundingClientRect();
-    const absPos = groupRef.current.getAbsolutePosition();
-    const screenScale = stage.scaleX();
-
-    const textarea = document.createElement("textarea");
-    textarea.value = element.text || "";
-    textarea.style.cssText = `position:fixed;left:${stageBox.left + absPos.x}px;top:${stageBox.top + absPos.y}px;width:${width * screenScale}px;height:${height * screenScale}px;font-size:${(element.fontSize || 20) * screenScale}px;padding:10px;border:2px solid ${COLORS.selection};background-color:${element.fillColor || "#fef3c7"};z-index:10000;font-family:inherit;resize:none;outline:none;box-shadow:0 4px 12px rgba(0,0,0,0.15);box-sizing:border-box;border-radius:4px;`;
-    textarea.addEventListener("mousedown", (e) => e.stopPropagation());
-    textarea.addEventListener("pointerdown", (e) => e.stopPropagation());
-    textarea.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        finishEditing(textarea.value);
-      } else if (e.key === "Escape") {
-        e.stopPropagation();
-        finishEditing(element.text || "");
-      }
-    });
-    textarea.addEventListener("blur", () => {
-      if (isEditingRef.current) finishEditing(textarea.value);
-    });
-    document.body.appendChild(textarea);
-    textareaRef.current = textarea;
-    setTimeout(() => {
-      textarea.focus();
-      textarea.select();
-    }, 10);
-    return () => {
-      textarea.remove();
-      if (textareaRef.current === textarea) textareaRef.current = null;
-    };
-  }, [isEditing]);
-
-  const handleClick = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-      const now = Date.now();
-      const isDoubleClick = now - lastClickTimeRef.current < 400;
-      lastClickTimeRef.current = now;
-      if (isDoubleClick && !isEditing) {
-        e.evt.preventDefault();
-        e.evt.stopPropagation();
-        setIsEditing(true);
-        onEditingChange?.(true);
-        return;
-      }
-      if (!isEditing) onSelect(element.id, getShiftKey(e.evt));
-    },
-    [element.id, onSelect, isEditing, onEditingChange],
-  );
-
-  return (
-    <>
-      <Group
-        ref={groupRef}
-        x={element.x}
-        y={element.y}
-        draggable={isSingleSelected}
-        onClick={handleClick}
-        onTap={handleClick}
-        onDragEnd={(e) => {
-          const nx = e.target.x(),
-            ny = e.target.y();
-          if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
-          else onTransformEnd(element.id, { x: nx, y: ny });
-        }}
-      >
-        <Rect
-          x={0}
-          y={0}
-          width={width}
-          height={height}
-          fill={element.fillColor || "#fef3c7"}
-          stroke={
-            isSelected && !isSingleSelected
-              ? COLORS.selection
-              : element.strokeColor ||
-                getStickyNoteStrokeColor(element.fillColor || "#fef3c7")
-          }
-          strokeWidth={isSelected && !isSingleSelected ? 2.5 : 1.5}
-          cornerRadius={6}
-          shadowColor="rgba(0,0,0,0.08)"
-          shadowBlur={8}
-          shadowOffset={{ x: 2, y: 2 }}
-        />
-        <KonvaText
-          x={10}
-          y={10}
-          width={width - 20}
-          height={height - 20}
-          text={element.text || "Note"}
-          fontSize={element.fontSize || 20}
-          fill="#374151"
-          wrap="word"
-          ellipsis
-        />
-        {isSelected && !isEditing && (
-          <Transformer
-            ref={trRef}
-            rotateEnabled={false}
-            borderStroke={COLORS.selection}
-            borderStrokeWidth={1.5}
-            anchorStroke={COLORS.selection}
-            anchorFill="white"
-            anchorSize={8}
-            anchorCornerRadius={2}
-          />
-        )}
-      </Group>
-    </>
-  );
-};
+// moved constants are imported from ../utils/constant
 
 // ─── Unified Multi-Select Box ─────────────────────────────────────────────────
 // Renders one dashed bounding box around ALL selected elements + handles group drag
@@ -1009,6 +44,8 @@ interface MultiSelectBoxProps {
   selectedIds: string[];
   onDragAll: (dx: number, dy: number) => void;
   onSelect: (id: string | null) => void;
+  onFlush?: () => void;
+  updateElement?: (id: string, attrs: Partial<WhiteboardElement>) => void;
 }
 
 const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
@@ -1016,9 +53,13 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
   selectedIds,
   onDragAll,
   onSelect,
+  onFlush,
+  updateElement: updateElementProp,
 }) => {
   const groupRef = useRef<Konva.Group>(null);
-  const PADDING = 8;
+  const rectRef = useRef<Konva.Rect>(null);
+  const trRef = useRef<Konva.Transformer>(null);
+  const PADDING = 12; // increased padding to account for stroke width
 
   // Compute bounding box of all selected elements
   let minX = Infinity,
@@ -1028,6 +69,9 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
   const selectedEls = elements.filter((el) => selectedIds.includes(el.id));
 
   for (const el of selectedEls) {
+    const strokeWidth = el.strokeWidth || 2;
+    const strokePadding = Math.ceil(strokeWidth / 2) + 2; // account for half stroke + small buffer
+
     if (el.type === "circle") {
       // Circle: x and y are stored as top-left corner in element data
       // but width/height define the bounding box
@@ -1035,17 +79,18 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
         y = el.y ?? 0;
       const w = el.width ?? 100,
         h = el.height ?? 100;
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x + w);
-      maxY = Math.max(maxY, y + h);
+      minX = Math.min(minX, x - strokePadding);
+      minY = Math.min(minY, y - strokePadding);
+      maxX = Math.max(maxX, x + w + strokePadding);
+      maxY = Math.max(maxY, y + h + strokePadding);
     } else if (el.points && el.points.length > 0) {
       // For elements with points (polygon, arrow, line, pencil)
+      // need to account for stroke width extending beyond points
       for (const p of el.points) {
-        minX = Math.min(minX, p.x);
-        minY = Math.min(minY, p.y);
-        maxX = Math.max(maxX, p.x);
-        maxY = Math.max(maxY, p.y);
+        minX = Math.min(minX, p.x - strokePadding);
+        minY = Math.min(minY, p.y - strokePadding);
+        maxX = Math.max(maxX, p.x + strokePadding);
+        maxY = Math.max(maxY, p.y + strokePadding);
       }
     } else if (el.type === "text") {
       // Text: use x, y and estimate dimensions from fontSize and text length
@@ -1055,20 +100,20 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
       const textLength = (el.text || "Text").length;
       const estimatedWidth = Math.max(textLength * (fontSize * 0.6), 100);
       const estimatedHeight = fontSize + 8;
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x + estimatedWidth);
-      maxY = Math.max(maxY, y + estimatedHeight);
+      minX = Math.min(minX, x - strokePadding);
+      minY = Math.min(minY, y - strokePadding);
+      maxX = Math.max(maxX, x + estimatedWidth + strokePadding);
+      maxY = Math.max(maxY, y + estimatedHeight + strokePadding);
     } else {
       // Default for rectangles, triangles, diamonds, sticky notes
       const x = el.x ?? 0,
         y = el.y ?? 0;
       const w = el.width ?? 60,
         h = el.height ?? 60;
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x + w);
-      maxY = Math.max(maxY, y + h);
+      minX = Math.min(minX, x - strokePadding);
+      minY = Math.min(minY, y - strokePadding);
+      maxX = Math.max(maxX, x + w + strokePadding);
+      maxY = Math.max(maxY, y + h + strokePadding);
     }
   }
 
@@ -1078,6 +123,99 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
   const boxY = minY - PADDING;
   const boxW = maxX - minX + PADDING * 2;
   const boxH = maxY - minY + PADDING * 2;
+
+  // Attach transformer to rect when there are selected elements
+  useEffect(() => {
+    if (rectRef.current && trRef.current) {
+      trRef.current.nodes([rectRef.current]);
+      trRef.current.getLayer()?.batchDraw();
+    }
+  }, [selectedIds.length]);
+
+  // Handle resizing all selected elements together
+  const handleGroupTransformEnd = () => {
+    const node = rectRef.current;
+    if (!node) return;
+
+    const scaleX = node.scaleX();
+    const scaleY = node.scaleY();
+
+    // Get the original bounding box (before scaling)
+    const origBoxX = boxX;
+    const origBoxY = boxY;
+    const origBoxW = boxW;
+    const origBoxH = boxH;
+
+    // Center of the original bounding box
+    const centerX = origBoxX + origBoxW / 2;
+    const centerY = origBoxY + origBoxH / 2;
+
+    // Update all selected elements with scaled dimensions
+    const updateEl = updateElementProp || useStore.getState().updateElement;
+    for (const el of selectedEls) {
+      let newAttrs: Partial<WhiteboardElement> = {};
+
+      if (
+        el.type === "circle" ||
+        el.type === "rectangle" ||
+        el.type === "sticky"
+      ) {
+        // Scale width and height
+        const w = el.width ?? 60;
+        const h = el.height ?? 60;
+        newAttrs.width = Math.max(10, w * scaleX);
+        newAttrs.height = Math.max(10, h * scaleY);
+
+        // Scale position relative to center
+        const x = el.x ?? 0;
+        const y = el.y ?? 0;
+        const relX = x - centerX;
+        const relY = y - centerY;
+        newAttrs.x = centerX + relX * scaleX;
+        newAttrs.y = centerY + relY * scaleY;
+      } else if (el.points && el.points.length > 0) {
+        // For point-based shapes, scale each point around center
+        const scaledPoints = el.points.map((p) => ({
+          x: centerX + (p.x - centerX) * scaleX,
+          y: centerY + (p.y - centerY) * scaleY,
+        }));
+        newAttrs.points = scaledPoints;
+      } else if (el.type === "text") {
+        // For text, scale position and font size
+        const fontSize = el.fontSize || 28;
+        newAttrs.fontSize = Math.max(10, fontSize * Math.max(scaleX, scaleY));
+
+        const x = el.x ?? 0;
+        const y = el.y ?? 0;
+        const relX = x - centerX;
+        const relY = y - centerY;
+        newAttrs.x = centerX + relX * scaleX;
+        newAttrs.y = centerY + relY * scaleY;
+      } else {
+        // For other shapes (triangle, diamond, polygon), scale dims
+        const w = el.width ?? 60;
+        const h = el.height ?? 60;
+        newAttrs.width = Math.max(10, w * scaleX);
+        newAttrs.height = Math.max(10, h * scaleY);
+
+        const x = el.x ?? 0;
+        const y = el.y ?? 0;
+        const relX = x - centerX;
+        const relY = y - centerY;
+        newAttrs.x = centerX + relX * scaleX;
+        newAttrs.y = centerY + relY * scaleY;
+      }
+
+      updateEl(el.id, newAttrs);
+    }
+
+    // Reset scale
+    node.scaleX(1);
+    node.scaleY(1);
+
+    // Trigger autosave
+    if (onFlush) onFlush();
+  };
 
   return (
     <Group
@@ -1107,6 +245,7 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
     >
       {/* The unified selection rectangle */}
       <Rect
+        ref={rectRef}
         x={boxX}
         y={boxY}
         width={boxW}
@@ -1117,6 +256,18 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
         dash={[6, 3]}
         listening={true}
         cornerRadius={4}
+        onTransformEnd={handleGroupTransformEnd}
+      />
+      {/* Transformer for resizing grouped elements */}
+      <Transformer
+        ref={trRef}
+        rotateEnabled={false}
+        borderStroke={COLORS.selection}
+        borderStrokeWidth={1.5}
+        anchorStroke={COLORS.selection}
+        anchorFill="white"
+        anchorSize={8}
+        anchorCornerRadius={2}
       />
       {/* Corner anchors for visual feedback */}
       {[
@@ -1957,6 +1108,10 @@ export default function Canvas({ id }: { id: string }) {
   const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const lastSentSnapshotRef = useRef<Map<string, string>>(new Map());
+  const prevStateRef = useRef<{
+    elements: WhiteboardElement[];
+    historyIndex: number;
+  } | null>(null);
   useEffect(() => {
     socket.connect();
     socket.emit("join_room", id);
@@ -2037,14 +1192,27 @@ export default function Canvas({ id }: { id: string }) {
         saveTimerRef.current = null;
       }, 300); // 300ms idle for faster autosave
     };
-    // subscribe to store changes via simple polling of elements reference
-    const unsub = useStore.subscribe(
-      (s) => s.elements,
-      () => {
+    // subscribe to store changes via elements + historyIndex (for autosave debounce)
+    const unsubscribe = useStore.subscribe((state) => {
+      // Check if elements or historyIndex changed
+      const elementsChanged =
+        !prevStateRef.current ||
+        prevStateRef.current.elements !== state.elements;
+      const historyChanged =
+        !prevStateRef.current ||
+        prevStateRef.current.historyIndex !== state.historyIndex;
+
+      if (elementsChanged || historyChanged) {
         handler();
-      },
-    );
-    return () => unsub();
+      }
+
+      prevStateRef.current = {
+        elements: state.elements,
+        historyIndex: state.historyIndex,
+      };
+    });
+
+    return unsubscribe;
   }, [flushChanges]);
 
   // Manual save handler (flush immediately and persist)
@@ -2127,8 +1295,20 @@ export default function Canvas({ id }: { id: string }) {
 
       // Update the dragged element itself
       updateElement(draggedId, { x: newX, y: newY });
+      // flush changes immediately after multi-drag
+      void flushChanges(false);
     },
-    [updateElement, updateElements],
+    [updateElement, updateElements, flushChanges],
+  );
+
+  // Handler for unified multi-select box drag (moves all selected elements together)
+  const handleMultiSelectBoxDrag = useCallback(
+    (dx: number, dy: number) => {
+      updateElements(selectedElementIds, { dx, dy });
+      // flush immediately after grouped element movement
+      void flushChanges(false);
+    },
+    [selectedElementIds, updateElements, flushChanges],
   );
 
   // ── Get position from pointer or touch ────────────────────────────────────
@@ -2250,6 +1430,13 @@ export default function Canvas({ id }: { id: string }) {
       ) {
         e.preventDefault();
         useStore.getState().groupSelected();
+        // flush immediately after grouping
+        setAutoSaveStatus("pending");
+        if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = window.setTimeout(() => {
+          flushChanges(false);
+          saveTimerRef.current = null;
+        }, 100);
       }
       if (
         (e.key === "g" || e.key === "G") &&
@@ -2258,6 +1445,13 @@ export default function Canvas({ id }: { id: string }) {
       ) {
         e.preventDefault();
         useStore.getState().ungroupSelected();
+        // flush immediately after ungrouping
+        setAutoSaveStatus("pending");
+        if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = window.setTimeout(() => {
+          flushChanges(false);
+          saveTimerRef.current = null;
+        }, 100);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -2964,13 +2158,19 @@ export default function Canvas({ id }: { id: string }) {
                 isSelected,
                 isSingleSelected,
                 onSelect: selectElement,
+                // update store and flush autosave immediately after transform
                 onTransformEnd: (
                   id: string,
                   attrs: Partial<WhiteboardElement>,
-                ) => updateElement(id, attrs),
+                ) => {
+                  updateElement(id, attrs);
+                  void flushChanges(false);
+                },
                 // Only pass onMultiDragEnd when multi-selected (single drag handles itself)
                 onMultiDragEnd:
-                  selectedElementIds.length > 1 ? undefined : undefined,
+                  selectedElementIds.length > 1
+                    ? handleMultiDragEnd
+                    : undefined,
               };
               return (
                 <React.Fragment key={element.id}>
@@ -3017,10 +2217,10 @@ export default function Canvas({ id }: { id: string }) {
               <MultiSelectBox
                 elements={elements}
                 selectedIds={selectedElementIds}
-                onDragAll={(dx, dy) =>
-                  updateElements(selectedElementIds, { dx, dy })
-                }
+                onDragAll={handleMultiSelectBoxDrag}
                 onSelect={selectElement}
+                updateElement={updateElement}
+                onFlush={() => void flushChanges(false)}
               />
             )}
 
