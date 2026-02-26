@@ -1143,9 +1143,20 @@ export default function Canvas({ id }: { id: string }) {
 
     socket.on("receive_draw", handleReceive);
 
+    // remove element when another client deletes it
+    const handleRemoteDelete = ({ elementId }: { elementId: string }) => {
+      const state = useStore.getState();
+      state.deleteElement(elementId);
+      // also clear snapshot so if the same id reappears later it will be sent
+      lastSentSnapshotRef.current.delete(elementId);
+    };
+
+    socket.on("element_deleted", handleRemoteDelete);
+
     return () => {
       socket.off("load_canvas", handleLoad);
       socket.off("receive_draw", handleReceive);
+      socket.off("element_deleted", handleRemoteDelete);
       socket.disconnect();
     };
   }, [id]);
@@ -1154,6 +1165,8 @@ export default function Canvas({ id }: { id: string }) {
     async (emitLeave = false) => {
       const state = useStore.getState();
       const changed: WhiteboardElement[] = [];
+
+      // detect additions/updates
       for (const el of state.elements) {
         const str = JSON.stringify(el);
         const prev = lastSentSnapshotRef.current.get(el.id);
@@ -1162,12 +1175,27 @@ export default function Canvas({ id }: { id: string }) {
           lastSentSnapshotRef.current.set(el.id, str);
         }
       }
-      if (changed.length === 0) return;
+
+      // detect deletions by comparing snapshot keys to current elements
+      const currentIds = new Set(state.elements.map((e) => e.id));
+      const deletedIds: string[] = [];
+      for (const idKey of Array.from(lastSentSnapshotRef.current.keys())) {
+        if (!currentIds.has(idKey)) {
+          deletedIds.push(idKey);
+          lastSentSnapshotRef.current.delete(idKey);
+        }
+      }
+
+      if (changed.length === 0 && deletedIds.length === 0) return;
       try {
         setAutoSaveStatus("saving");
         // emit each changed element (backend appends to Redis)
         for (const el of changed) {
           socket.emit("draw_element", { roomId: id, element: el });
+        }
+        // emit deletion events so server can remove them too
+        for (const delId of deletedIds) {
+          socket.emit("delete_element", { roomId: id, elementId: delId });
         }
         // optionally request server to persist Redis -> Mongo
         if (emitLeave) socket.emit("leave_room", id);
@@ -1185,7 +1213,7 @@ export default function Canvas({ id }: { id: string }) {
   // debounce changes
   useEffect(() => {
     const handler = () => {
-      setAutoSaveStatus("pending");
+      setAutoSaveStatus("idle");
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = window.setTimeout(() => {
         flushChanges(false);
@@ -1398,6 +1426,8 @@ export default function Canvas({ id }: { id: string }) {
         const s = useStore.getState();
         if (s.selectedElementIds.length > 0) s.deleteSelected();
         else if (s.selectedElementId) s.deleteElement(s.selectedElementId);
+        // flush immediately so the deletion is propagated and auto-saved
+        void flushChanges(false);
       }
       if ((e.key === "=" || e.key === "+") && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
@@ -1410,6 +1440,11 @@ export default function Canvas({ id }: { id: string }) {
       if (e.key === "0" && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         handleResetZoom();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        // save immediately and persist
+        handleManualSave();
       }
       if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
         e.preventDefault();
