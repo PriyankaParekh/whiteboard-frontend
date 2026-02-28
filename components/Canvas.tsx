@@ -1153,10 +1153,18 @@ export default function Canvas({ id }: { id: string }) {
 
     socket.on("element_deleted", handleRemoteDelete);
 
+    const handleRoomExpired = () => {
+      socket.disconnect();
+      window.location.href = "/";
+      alert("This room has expired.");
+    };
+    socket.on("room_expired", handleRoomExpired);
+
     return () => {
       socket.off("load_canvas", handleLoad);
       socket.off("receive_draw", handleReceive);
       socket.off("element_deleted", handleRemoteDelete);
+      socket.off("room_expired", handleRoomExpired);
       socket.disconnect();
     };
   }, [id]);
@@ -1887,7 +1895,11 @@ export default function Canvas({ id }: { id: string }) {
       // if we're drawing with pencil and the pointer jumps a long distance,
       // finalize the current stroke and start a new one to avoid the long
       // connection line the user is seeing.
-      if (selectedTool === "pencil" && currentElement && currentElement.points) {
+      if (
+        selectedTool === "pencil" &&
+        currentElement &&
+        currentElement.points
+      ) {
         const pts = currentElement.points;
         const last = pts[pts.length - 1];
         const pos = getPointerPos();
@@ -1988,7 +2000,11 @@ export default function Canvas({ id }: { id: string }) {
       if (!isDrawing) return;
       const touch = e.touches[0];
       const pos = getTouchPos(touch);
-      if (selectedTool === "pencil" && currentElement && currentElement.points) {
+      if (
+        selectedTool === "pencil" &&
+        currentElement &&
+        currentElement.points
+      ) {
         const pts = currentElement.points;
         const last = pts[pts.length - 1];
         const dx = pos.x - last.x;
