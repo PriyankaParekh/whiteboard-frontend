@@ -1496,9 +1496,21 @@ export default function Canvas({ id }: { id: string }) {
   // ══════════════════════════════════════════════════════════════════════════
   // Shared draw-start logic (used by both mouse and touch)
   // ═══════════════════════════���══════════════════════════════════════════════
+
+  // keep a ref to the latest finishDraw callback so it can be
+  // invoked inside startDraw without needing to list it as a dependency.
+  const finishDrawRef = useRef<() => void>(() => {});
+
   const startDraw = useCallback(
     (pos: { x: number; y: number }, isOnStage: boolean) => {
       if (isAnyTextEditingRef.current) return;
+
+      // if a previous drawing session didn't finish (e.g. mouse up outside stage)
+      // force it to complete before starting a new one. this prevents the
+      // currentElement from being overwritten and causing strokes to join.
+      if (isDrawing && currentElement) {
+        finishDrawRef.current();
+      }
 
       drawStartRef.current = pos;
 
@@ -1639,8 +1651,13 @@ export default function Canvas({ id }: { id: string }) {
       elementStrokeColor,
       elementFillColor,
       stickyNoteColor,
+      isDrawing,
+      currentElement,
     ],
   );
+
+  // when drawing with pencil we also update the element in the store so
+  // sections remain joined across mouseup/mousedown
 
   const updateDraw = useCallback(
     (pos: { x: number; y: number }) => {
@@ -1692,7 +1709,7 @@ export default function Canvas({ id }: { id: string }) {
         );
       }
     },
-    [selectedTool, currentElement],
+    [selectedTool, currentElement, updateElement],
   );
 
   const finishDraw = useCallback(() => {
@@ -1778,6 +1795,11 @@ export default function Canvas({ id }: { id: string }) {
     setTool,
   ]);
 
+  // keep ref updated so startDraw can call latest finishDraw
+  useEffect(() => {
+    finishDrawRef.current = finishDraw;
+  }, [finishDraw]);
+
   const elementIntersectsBox = useCallback(
     (
       element: WhiteboardElement,
@@ -1837,6 +1859,10 @@ export default function Canvas({ id }: { id: string }) {
     [getPointerPos, startDraw],
   );
 
+  // threshold (in stage coordinates) beyond which a pencil stroke should
+  // automatically break into a new element even if the pointer is still down.
+  const GAP_THRESHOLD = 80;
+
   const handleMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       if (isDraggingStage && (e.evt.ctrlKey || e.evt.metaKey)) {
@@ -1855,10 +1881,39 @@ export default function Canvas({ id }: { id: string }) {
         lastPosRef.current = pointerPos;
         return;
       }
+
       if (!isDrawing) return;
+
+      // if we're drawing with pencil and the pointer jumps a long distance,
+      // finalize the current stroke and start a new one to avoid the long
+      // connection line the user is seeing.
+      if (selectedTool === "pencil" && currentElement && currentElement.points) {
+        const pts = currentElement.points;
+        const last = pts[pts.length - 1];
+        const pos = getPointerPos();
+        const dx = pos.x - last.x;
+        const dy = pos.y - last.y;
+        if (Math.hypot(dx, dy) > GAP_THRESHOLD) {
+          // finish existing stroke and begin a new segment
+          finishDraw();
+          startDraw(pos, true);
+          return;
+        }
+      }
+
       updateDraw(getPointerPos());
     },
-    [isDraggingStage, isDrawing, getPointerPos, updateDraw, position],
+    [
+      isDraggingStage,
+      isDrawing,
+      getPointerPos,
+      updateDraw,
+      position,
+      selectedTool,
+      currentElement,
+      finishDraw,
+      startDraw,
+    ],
   );
 
   const handleMouseUp = useCallback(() => {
@@ -1932,7 +1987,19 @@ export default function Canvas({ id }: { id: string }) {
 
       if (!isDrawing) return;
       const touch = e.touches[0];
-      updateDraw(getTouchPos(touch));
+      const pos = getTouchPos(touch);
+      if (selectedTool === "pencil" && currentElement && currentElement.points) {
+        const pts = currentElement.points;
+        const last = pts[pts.length - 1];
+        const dx = pos.x - last.x;
+        const dy = pos.y - last.y;
+        if (Math.hypot(dx, dy) > GAP_THRESHOLD) {
+          finishDraw();
+          startDraw(pos, true);
+          return;
+        }
+      }
+      updateDraw(pos);
     };
 
     const onTouchEnd = (e: TouchEvent) => {
@@ -2181,6 +2248,7 @@ export default function Canvas({ id }: { id: string }) {
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp} // ensure strokes finish if cursor leaves canvas
           onWheel={handleWheel}
         >
           <Layer ref={layerRef}>
