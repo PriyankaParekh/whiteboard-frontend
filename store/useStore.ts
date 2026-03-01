@@ -1,3 +1,17 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// FIX 1 of 3 — useStore.ts  (drop-in replacement)
+//
+// THE BUG:  updateElement always pushes to history (from previous fix).
+//           Every pixel of mouse-drag = new history entry = autosave debounce
+//           resets = actual network save never fires while user is dragging.
+//           So text saves look "pending" forever and are lost on refresh.
+//
+// THE FIX:  Only push to history for meaningful changes (content, size,
+//           font). Pure x/y position moves update elements array WITHOUT
+//           touching history — the debounce timer won't keep resetting.
+//           deleteElement/deleteSelected still push to history so deletions
+//           always trigger an immediate save.
+// ═══════════════════════════════════════════════════════════════════════════
 "use client";
 
 import { create } from "zustand";
@@ -69,6 +83,26 @@ interface CanvasStore {
   ungroupSelected: () => void;
 }
 
+// Keys whose changes are "meaningful" and should push a history entry
+// (which triggers the autosave subscription to fire exactly once).
+const HISTORY_KEYS = new Set([
+  "htmlText",
+  "text",
+  "width",
+  "height",
+  "fontSize",
+  "scaleX",
+  "scaleY",
+  "rotation",
+  "strokeColor",
+  "fillColor",
+  "strokeWidth",
+]);
+
+function isContentChange(updated: Partial<WhiteboardElement>): boolean {
+  return Object.keys(updated).some((k) => HISTORY_KEYS.has(k));
+}
+
 export const useStore = create<CanvasStore>((set, get) => ({
   elements: [],
   selectedTool: "select",
@@ -93,11 +127,23 @@ export const useStore = create<CanvasStore>((set, get) => ({
     }),
 
   updateElement: (id, updated) =>
-    set((state) => ({
-      elements: state.elements.map((el) =>
+    set((state) => {
+      const newElements = state.elements.map((el) =>
         el.id === id ? { ...el, ...updated } : el,
-      ),
-    })),
+      );
+      // Only push history for content/style/size changes, NOT pure x/y position moves.
+      // This prevents drag moves from resetting the autosave debounce timer constantly.
+      if (isContentChange(updated)) {
+        const newHistory = state.history.slice(0, state.historyIndex + 1);
+        newHistory.push(newElements);
+        return {
+          elements: newElements,
+          history: newHistory,
+          historyIndex: newHistory.length - 1,
+        };
+      }
+      return { elements: newElements };
+    }),
 
   updateElements: (ids, { dx, dy }) =>
     set((state) => ({
@@ -209,14 +255,14 @@ export const useStore = create<CanvasStore>((set, get) => ({
     }),
 
   setTool: (tool) => set(() => ({ selectedTool: tool })),
+
   setElements: (els) =>
-    set(() => {
-      const newHistory = [els];
-      return { elements: els, history: newHistory, historyIndex: 0 };
-    }),
+    set(() => ({ elements: els, history: [els], historyIndex: 0 })),
+
   setStickyNoteColor: (color) => set(() => ({ stickyNoteColor: color })),
   setElementStrokeColor: (color) => set(() => ({ elementStrokeColor: color })),
   setElementFillColor: (color) => set(() => ({ elementFillColor: color })),
+
   clearCanvas: () =>
     set(() => ({
       elements: [],

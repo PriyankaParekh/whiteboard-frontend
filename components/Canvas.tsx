@@ -1064,7 +1064,23 @@ interface RichTextOverlayElProps {
   setQuillEditingElementId: (id: string | null) => void;
   isAnyTextEditingRef: React.MutableRefObject<boolean>;
 }
+// ─── Drop-in replacement for the RichTextOverlayEl component in Canvas.tsx ───
+// Fixes: overlay size now matches content → single selection box aligns correctly
 
+interface RichTextOverlayElProps {
+  el: WhiteboardElement;
+  isElSelected: boolean;
+  position: { x: number; y: number };
+  scale: number;
+  selectElement: (id: string | null) => void;
+  updateElement: (id: string, attrs: Partial<WhiteboardElement>) => void;
+  flushChanges: (emitLeave?: boolean) => void;
+  setQuillEditingElementId: (id: string | null) => void;
+  isAnyTextEditingRef: React.MutableRefObject<boolean>;
+  lastOverlaySelectTimeRef: React.MutableRefObject<number>; // ← NEW
+}
+
+// Updated component:
 const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
   el,
   isElSelected,
@@ -1075,20 +1091,60 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
   flushChanges,
   setQuillEditingElementId,
   isAnyTextEditingRef,
+  lastOverlaySelectTimeRef, // ← NEW
 }) => {
-  const lastOverlayClickRef = useRef(0);
-  const dragStartPosRef = useRef<{
+  const lastOverlayClickRef = useRef<number>(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
+  const sizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragStartRef = useRef<{
     clientX: number;
     clientY: number;
     elX: number;
     elY: number;
   } | null>(null);
 
-  const handlePointerDown = (e: React.PointerEvent) => {
+  const syncSize = useCallback(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    requestAnimationFrame(() => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const canvasW = Math.ceil(rect.width / scale) + 2;
+      const canvasH = Math.ceil(rect.height / scale) + 2;
+      if (
+        Math.abs((el.width ?? 0) - canvasW) > 2 ||
+        Math.abs((el.height ?? 0) - canvasH) > 2
+      ) {
+        updateElement(el.id, { width: canvasW, height: canvasH });
+      }
+    });
+  }, [el.id, el.width, el.height, scale, updateElement]);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    roRef.current = new ResizeObserver(() => {
+      if (sizeTimerRef.current) clearTimeout(sizeTimerRef.current);
+      sizeTimerRef.current = setTimeout(syncSize, 60);
+    });
+    roRef.current.observe(node);
+    syncSize();
+    return () => {
+      roRef.current?.disconnect();
+      if (sizeTimerRef.current) clearTimeout(sizeTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [el.htmlText]);
+
+  useEffect(() => {
+    syncSize();
+  }, [scale, syncSize]);
+
+  const onPointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();
-    // Start drag
     e.currentTarget.setPointerCapture(e.pointerId);
-    dragStartPosRef.current = {
+    dragStartRef.current = {
       clientX: e.clientX,
       clientY: e.clientY,
       elX: el.x,
@@ -1096,32 +1152,32 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
     };
   };
 
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!dragStartPosRef.current) return;
-    const dx = (e.clientX - dragStartPosRef.current.clientX) / scale;
-    const dy = (e.clientY - dragStartPosRef.current.clientY) / scale;
-
-    // Optimistic fast update without hitting store on every frame if laggy,
-    // but store update is easiest:
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragStartRef.current) return;
+    const dx = (e.clientX - dragStartRef.current.clientX) / scale;
+    const dy = (e.clientY - dragStartRef.current.clientY) / scale;
     updateElement(el.id, {
-      x: dragStartPosRef.current.elX + dx,
-      y: dragStartPosRef.current.elY + dy,
+      x: dragStartRef.current.elX + dx,
+      y: dragStartRef.current.elY + dy,
     });
   };
 
-  const handlePointerUp = (e: React.PointerEvent) => {
-    if (dragStartPosRef.current) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-      dragStartPosRef.current = null;
-      void flushChanges(false);
-    }
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (!dragStartRef.current) return;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    dragStartRef.current = null;
+    // Flush position change immediately after drag so it's saved
+    void flushChanges(false);
   };
 
-  const handleClick = (e: React.MouseEvent) => {
+  const onClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     const now = Date.now();
     const isDouble = now - lastOverlayClickRef.current < 400;
     lastOverlayClickRef.current = now;
+
+    // ← Stamp the time so finishDraw knows not to deselect
+    lastOverlaySelectTimeRef.current = now;
 
     if (isDouble) {
       selectElement(el.id);
@@ -1132,44 +1188,51 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
     }
   };
 
+  const screenFontSize = (el.fontSize || 28) * scale;
+
   return (
     <div
+      ref={containerRef}
       style={{
         position: "absolute",
         left: position.x + el.x * scale,
         top: position.y + el.y * scale,
-        transform: `scale(${scale}) rotate(${el.rotation || 0}deg) scale(${el.scaleX || 1}, ${el.scaleY || 1})`,
-        transformOrigin: "top left",
+        display: "inline-block",
+        minWidth: 20,
+        minHeight: 16,
+        overflow: "visible",
         pointerEvents: "auto",
         userSelect: "none",
         cursor: "move",
-        outline: isElSelected
-          ? "2px solid #3b82f6"
-          : "1px dashed rgba(148,163,184,0.4)",
+        touchAction: "none",
+        outline: isElSelected ? "2px solid #3b82f6" : "none",
+        outlineOffset: "2px",
         borderRadius: 3,
-        touchAction: "none", // Prevents pan/scroll on touch drag
+        boxSizing: "border-box",
       }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
-      onClick={handleClick}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onClick={onClick}
     >
       <div
         className="ql-editor"
         dangerouslySetInnerHTML={{ __html: el.htmlText! }}
         style={{
           padding: 0,
+          margin: 0,
           fontFamily:
             "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-          fontSize: el.fontSize || 28,
-          minWidth: 60,
+          fontSize: screenFontSize,
+          lineHeight: 1.4,
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
           border: "none",
           outline: "none",
           boxSizing: "border-box",
           pointerEvents: "none",
+          display: "block",
         }}
       />
     </div>
@@ -1203,6 +1266,7 @@ export default function Canvas({ id }: { id: string }) {
 
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
+  const lastOverlaySelectTimeRef = useRef<number>(0);
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
   const drawStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDrawing, setIsDrawing] = useState(false);
@@ -1245,19 +1309,44 @@ export default function Canvas({ id }: { id: string }) {
     socket.connect();
     socket.emit("join_room", id);
 
-    // When server sends full canvas (on join)
     const handleLoad = (data: WhiteboardElement[]) => {
-      // dedupe by id keeping last occurrence (server may contain multiple versions)
       const map = new Map<string, WhiteboardElement>();
       for (const item of data) map.set(item.id, item);
-      const deduped = Array.from(map.values());
+      let deduped = Array.from(map.values());
+
+      // If server sent nothing, try the localStorage backup written on last unload
+      if (deduped.length === 0) {
+        try {
+          const raw = localStorage.getItem(`wb_backup_${id}`);
+          if (raw) {
+            const parsed: WhiteboardElement[] = JSON.parse(raw);
+            if (parsed.length > 0) {
+              deduped = parsed;
+              // Re-emit so server gets them properly saved
+              for (const el of parsed) {
+                socket.emit("draw_element", { roomId: id, element: el });
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
       useStore.getState().setElements(deduped);
-      // reset lastSentSnapshot to reflect what's on server
       const snapshot = lastSentSnapshotRef.current;
       snapshot.clear();
       for (const el of deduped) snapshot.set(el.id, JSON.stringify(el));
     };
-
+    const handleRemoteBatchDelete = ({
+      elementIds,
+    }: {
+      elementIds: string[];
+    }) => {
+      const state = useStore.getState();
+      for (const elementId of elementIds) {
+        state.deleteElement(elementId);
+        lastSentSnapshotRef.current.delete(elementId);
+      }
+    };
     socket.on("load_canvas", handleLoad);
 
     // When other user draws/updates one element
@@ -1281,6 +1370,7 @@ export default function Canvas({ id }: { id: string }) {
     };
 
     socket.on("element_deleted", handleRemoteDelete);
+    socket.on("elements_deleted", handleRemoteBatchDelete);
 
     const handleRoomExpired = () => {
       socket.disconnect();
@@ -1302,8 +1392,9 @@ export default function Canvas({ id }: { id: string }) {
     async (emitLeave = false) => {
       const state = useStore.getState();
       const changed: WhiteboardElement[] = [];
+      const deletedIds: string[] = [];
 
-      // detect additions/updates
+      // Detect additions / updates
       for (const el of state.elements) {
         const str = JSON.stringify(el);
         const prev = lastSentSnapshotRef.current.get(el.id);
@@ -1313,9 +1404,8 @@ export default function Canvas({ id }: { id: string }) {
         }
       }
 
-      // detect deletions by comparing snapshot keys to current elements
+      // Detect deletions — any ID in snapshot that's no longer in elements
       const currentIds = new Set(state.elements.map((e) => e.id));
-      const deletedIds: string[] = [];
       for (const idKey of Array.from(lastSentSnapshotRef.current.keys())) {
         if (!currentIds.has(idKey)) {
           deletedIds.push(idKey);
@@ -1324,18 +1414,34 @@ export default function Canvas({ id }: { id: string }) {
       }
 
       if (changed.length === 0 && deletedIds.length === 0) return;
+
       try {
         setAutoSaveStatus("saving");
-        // emit each changed element (backend appends to Redis)
+
+        // Emit each changed/added element
         for (const el of changed) {
           socket.emit("draw_element", { roomId: id, element: el });
         }
-        // emit deletion events so server can remove them too
-        for (const delId of deletedIds) {
-          socket.emit("delete_element", { roomId: id, elementId: delId });
+
+        // KEY FIX: emit ONE batch event for ALL deleted IDs instead of
+        // one event per ID. This is handled atomically on the server with
+        // a mutex so no race conditions between concurrent deletes.
+        if (deletedIds.length === 1) {
+          // Single delete — use the original event (backward compat)
+          socket.emit("delete_element", {
+            roomId: id,
+            elementId: deletedIds[0],
+          });
+        } else if (deletedIds.length > 1) {
+          // Multiple deletes — use new batch event
+          socket.emit("delete_elements", {
+            roomId: id,
+            elementIds: deletedIds,
+          });
         }
-        // optionally request server to persist Redis -> Mongo
+
         if (emitLeave) socket.emit("leave_room", id);
+
         setAutoSaveStatus("saved");
         setLastSavedAt(Date.now());
         setTimeout(() => setAutoSaveStatus("idle"), 1200);
@@ -1347,30 +1453,23 @@ export default function Canvas({ id }: { id: string }) {
     [id],
   );
 
-  // debounce changes
   useEffect(() => {
-    const handler = () => {
-      setAutoSaveStatus("idle");
+    const scheduleFlush = () => {
+      setAutoSaveStatus("pending");
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = window.setTimeout(() => {
         flushChanges(false);
         saveTimerRef.current = null;
-      }, 300); // 300ms idle for faster autosave
+      }, 400);
     };
-    // subscribe to store changes via elements + historyIndex (for autosave debounce)
-    const unsubscribe = useStore.subscribe((state) => {
-      // Check if elements or historyIndex changed
-      const elementsChanged =
-        !prevStateRef.current ||
-        prevStateRef.current.elements !== state.elements;
-      const historyChanged =
-        !prevStateRef.current ||
-        prevStateRef.current.historyIndex !== state.historyIndex;
 
-      if (elementsChanged || historyChanged) {
-        handler();
+    // Two-arg subscribe — fires ONLY when elements array ref changes,
+    // NOT on selection changes (selectedElementId/selectedElementIds are
+    // separate store keys, not part of the elements array).
+    const unsubscribe = useStore.subscribe((state, prev) => {
+      if (state.elements !== prev.elements) {
+        scheduleFlush();
       }
-
       prevStateRef.current = {
         elements: state.elements,
         historyIndex: state.historyIndex,
@@ -1379,6 +1478,23 @@ export default function Canvas({ id }: { id: string }) {
 
     return unsubscribe;
   }, [flushChanges]);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (saveTimerRef.current) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      // localStorage backup — survives even if socket doesn't fire in time
+      try {
+        const els = useStore.getState().elements;
+        localStorage.setItem(`wb_backup_${id}`, JSON.stringify(els));
+      } catch (_) {}
+      flushChanges(true);
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [flushChanges, id]);
 
   // Manual save handler (flush immediately and persist)
   const handleManualSave = React.useCallback(async () => {
@@ -1561,11 +1677,16 @@ export default function Canvas({ id }: { id: string }) {
       )
         return;
       if (isAnyTextEditingRef.current) return;
+
       if (e.key === "Delete" || e.key === "Backspace") {
         const s = useStore.getState();
         if (s.selectedElementIds.length > 0) s.deleteSelected();
         else if (s.selectedElementId) s.deleteElement(s.selectedElementId);
-        // flush immediately so the deletion is propagated and auto-saved
+        // Flush immediately (bypass debounce) so deletion reaches server right away
+        if (saveTimerRef.current) {
+          window.clearTimeout(saveTimerRef.current);
+          saveTimerRef.current = null;
+        }
         void flushChanges(false);
       }
       if ((e.key === "=" || e.key === "+") && !e.ctrlKey && !e.metaKey) {
@@ -1863,7 +1984,14 @@ export default function Canvas({ id }: { id: string }) {
         if (selectedIds.length > 0) selectElements(selectedIds);
         else selectElement(null);
       } else {
-        selectElement(null);
+        // Tiny click — only deselect if we didn't JUST select a text overlay.
+        // The overlay's onClick fires before mouseUp, so if it ran within the
+        // last 300ms we know the user clicked on a text element.
+        const justSelectedOverlay =
+          Date.now() - lastOverlaySelectTimeRef.current < 300;
+        if (!justSelectedOverlay) {
+          selectElement(null);
+        }
       }
       setSelectionBox(null);
       setIsDrawing(false);
@@ -2412,11 +2540,17 @@ export default function Canvas({ id }: { id: string }) {
                 isSingleSelected,
                 onSelect: selectElement,
                 // update store and flush autosave immediately after transform
+
                 onTransformEnd: (
                   id: string,
                   attrs: Partial<WhiteboardElement>,
                 ) => {
                   updateElement(id, attrs);
+                  // Cancel pending debounce and flush now so transforms are saved immediately
+                  if (saveTimerRef.current) {
+                    window.clearTimeout(saveTimerRef.current);
+                    saveTimerRef.current = null;
+                  }
                   void flushChanges(false);
                 },
                 // Only pass onMultiDragEnd when multi-selected (single drag handles itself)
@@ -2659,6 +2793,7 @@ export default function Canvas({ id }: { id: string }) {
                   flushChanges={flushChanges}
                   setQuillEditingElementId={setQuillEditingElementId}
                   isAnyTextEditingRef={isAnyTextEditingRef}
+                  lastOverlaySelectTimeRef={lastOverlaySelectTimeRef}
                 />
               );
             })}
