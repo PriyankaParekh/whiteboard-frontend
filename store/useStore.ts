@@ -29,10 +29,14 @@ export interface WhiteboardElement {
   y2?: number;
   points?: { x: number; y: number }[];
   text?: string;
+  htmlText?: string;
   strokeColor?: string;
   fillColor?: string;
   strokeWidth?: number;
   angle?: number;
+  rotation?: number;
+  scaleX?: number;
+  scaleY?: number;
   groupId?: string;
 }
 

@@ -15,6 +15,7 @@ import Konva from "konva";
 import { useStore, WhiteboardElement, ToolType } from "../store/useStore";
 import Toolbar from "./Toolbar";
 import { socket } from "@/socket/connection";
+import QuillEditorModal from "./QuillEditorModal";
 import {
   RectShape,
   CircleShape,
@@ -1051,6 +1052,130 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   return isMobile ? mobilePanel : desktopPanel;
 };
 
+// ─── Rich Text HTML Overlay Element (Handles Drag & Click) ───────────────────
+interface RichTextOverlayElProps {
+  el: WhiteboardElement;
+  isElSelected: boolean;
+  position: { x: number; y: number };
+  scale: number;
+  selectElement: (id: string | null) => void;
+  updateElement: (id: string, attrs: Partial<WhiteboardElement>) => void;
+  flushChanges: (emitLeave?: boolean) => void;
+  setQuillEditingElementId: (id: string | null) => void;
+  isAnyTextEditingRef: React.MutableRefObject<boolean>;
+}
+
+const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
+  el,
+  isElSelected,
+  position,
+  scale,
+  selectElement,
+  updateElement,
+  flushChanges,
+  setQuillEditingElementId,
+  isAnyTextEditingRef,
+}) => {
+  const lastOverlayClickRef = useRef(0);
+  const dragStartPosRef = useRef<{
+    clientX: number;
+    clientY: number;
+    elX: number;
+    elY: number;
+  } | null>(null);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    // Start drag
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragStartPosRef.current = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      elX: el.x,
+      elY: el.y,
+    };
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragStartPosRef.current) return;
+    const dx = (e.clientX - dragStartPosRef.current.clientX) / scale;
+    const dy = (e.clientY - dragStartPosRef.current.clientY) / scale;
+
+    // Optimistic fast update without hitting store on every frame if laggy,
+    // but store update is easiest:
+    updateElement(el.id, {
+      x: dragStartPosRef.current.elX + dx,
+      y: dragStartPosRef.current.elY + dy,
+    });
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (dragStartPosRef.current) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+      dragStartPosRef.current = null;
+      void flushChanges(false);
+    }
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const now = Date.now();
+    const isDouble = now - lastOverlayClickRef.current < 400;
+    lastOverlayClickRef.current = now;
+
+    if (isDouble) {
+      selectElement(el.id);
+      setQuillEditingElementId(el.id);
+      isAnyTextEditingRef.current = true;
+    } else {
+      selectElement(el.id);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: position.x + el.x * scale,
+        top: position.y + el.y * scale,
+        transform: `scale(${scale}) rotate(${el.rotation || 0}deg) scale(${el.scaleX || 1}, ${el.scaleY || 1})`,
+        transformOrigin: "top left",
+        pointerEvents: "auto",
+        userSelect: "none",
+        cursor: "move",
+        outline: isElSelected
+          ? "2px solid #3b82f6"
+          : "1px dashed rgba(148,163,184,0.4)",
+        borderRadius: 3,
+        touchAction: "none", // Prevents pan/scroll on touch drag
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onClick={handleClick}
+    >
+      <div
+        className="ql-editor"
+        dangerouslySetInnerHTML={{ __html: el.htmlText! }}
+        style={{
+          padding: 0,
+          fontFamily:
+            "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+          fontSize: el.fontSize || 28,
+          minWidth: 60,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          border: "none",
+          outline: "none",
+          boxSizing: "border-box",
+          pointerEvents: "none",
+        }}
+      />
+    </div>
+  );
+};
+
 // ─── Main Canvas ─────────────────────────────────────────────────────────────
 export default function Canvas({ id }: { id: string }) {
   const {
@@ -1093,6 +1218,10 @@ export default function Canvas({ id }: { id: string }) {
     height: number;
   } | null>(null);
   const [canvasBg, setCanvasBg] = useState(CANVAS_BG_COLORS[0]);
+  // Track which text element should open the Quill editor immediately
+  const [quillEditingElementId, setQuillEditingElementId] = useState<
+    string | null
+  >(null);
   const isAnyTextEditingRef = useRef(false);
   const isPanningRef = useRef(false);
   const lastTouchPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -1427,9 +1556,11 @@ export default function Canvas({ id }: { id: string }) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
       )
         return;
+      if (isAnyTextEditingRef.current) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         const s = useStore.getState();
         if (s.selectedElementIds.length > 0) s.deleteSelected();
@@ -1632,6 +1763,9 @@ export default function Canvas({ id }: { id: string }) {
         } as WhiteboardElement;
         addElement(newEl);
         selectElement(newEl.id);
+        // Immediately open Quill editor for the new text element
+        setQuillEditingElementId(newEl.id);
+        isAnyTextEditingRef.current = true;
         setTool("select");
       } else if (selectedTool === "sticky") {
         if (!isOnStage) return;
@@ -2495,6 +2629,66 @@ export default function Canvas({ id }: { id: string }) {
             )}
           </Layer>
         </Stage>
+
+        {/* HTML overlay for rich-text (htmlText) text elements */}
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+            zIndex: 3,
+            overflow: "hidden",
+          }}
+        >
+          {elements
+            .filter((el) => el.type === "text" && el.htmlText)
+            .map((el) => {
+              const isElSelected = selectedElementIds.includes(el.id);
+              return (
+                <RichTextOverlayEl
+                  key={el.id}
+                  el={el}
+                  isElSelected={isElSelected}
+                  position={position}
+                  scale={scale}
+                  selectElement={selectElement}
+                  updateElement={updateElement}
+                  flushChanges={flushChanges}
+                  setQuillEditingElementId={setQuillEditingElementId}
+                  isAnyTextEditingRef={isAnyTextEditingRef}
+                />
+              );
+            })}
+        </div>
+
+        {/* Quill modal for newly placed text elements (opens immediately on placement) */}
+        {quillEditingElementId &&
+          (() => {
+            const editEl = elements.find(
+              (el) => el.id === quillEditingElementId,
+            );
+            return editEl ? (
+              <QuillEditorModal
+                initialHtml={editEl.htmlText || ""}
+                onSave={(html, plain) => {
+                  updateElement(quillEditingElementId, {
+                    text: plain || " ",
+                    htmlText: html,
+                  });
+                  setQuillEditingElementId(null);
+                  isAnyTextEditingRef.current = false;
+                  void flushChanges(false);
+                }}
+                onClose={() => {
+                  setQuillEditingElementId(null);
+                  isAnyTextEditingRef.current = false;
+                }}
+              />
+            ) : null;
+          })()}
 
         <ControlPanel
           scale={scale}

@@ -5,6 +5,7 @@ import { Transformer, Rect } from "react-konva";
 import Konva from "konva";
 import { Text as KonvaText } from "react-konva";
 import { ShapeProps, getShiftKey, COLORS } from "./shared";
+import QuillEditorModal from "../QuillEditorModal";
 
 const TextShape: React.FC<ShapeProps> = ({
   element,
@@ -18,10 +19,8 @@ const TextShape: React.FC<ShapeProps> = ({
 }) => {
   const textRef = useRef<Konva.Text>(null);
   const trRef = useRef<Konva.Transformer>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const lastClickTimeRef = useRef(0);
-  const isEditingRef = useRef(false);
 
   useEffect(() => {
     if (isSingleSelected && trRef.current && textRef.current && !isEditing) {
@@ -31,65 +30,21 @@ const TextShape: React.FC<ShapeProps> = ({
   }, [isSingleSelected, isEditing]);
 
   const finishEditing = useCallback(
-    (newText: string) => {
-      if (!isEditingRef.current) return;
-      isEditingRef.current = false;
+    (html: string, plainText: string) => {
       setIsEditing(false);
       onEditingChange?.(false);
-      onTransformEnd(element.id, { text: newText });
+      onTransformEnd(element.id, { text: plainText || " ", htmlText: html });
       setTool?.("select");
     },
     [element.id, onTransformEnd, onEditingChange, setTool],
   );
 
-  useEffect(() => {
-    if (!isEditing) {
-      if (inputRef.current) {
-        inputRef.current.remove();
-        inputRef.current = null;
-      }
-      return;
-    }
-
-    isEditingRef.current = true;
-    if (!textRef.current) return;
-    const stage = textRef.current.getStage();
-    if (!stage) return;
-    const stageBox = stage.container().getBoundingClientRect();
-    const absPos = textRef.current.getAbsolutePosition();
-    const screenScale = stage.scaleX();
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = element.text || "";
-    input.style.cssText = `position:fixed;left:${stageBox.left + absPos.x}px;top:${stageBox.top + absPos.y}px;font-size:${(element.fontSize || 28) * screenScale}px;padding:4px 8px;border:2px solid ${COLORS.selection};background-color:white;z-index:10000;min-width:200px;outline:none;font-family:inherit;box-shadow:0 4px 12px rgba(0,0,0,0.15);border-radius:4px;`;
-    input.addEventListener("mousedown", (e) => e.stopPropagation());
-    input.addEventListener("pointerdown", (e) => e.stopPropagation());
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        e.stopPropagation();
-        finishEditing(input.value);
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        finishEditing(element.text || "");
-      }
-    });
-    input.addEventListener("blur", () => {
-      if (isEditingRef.current) finishEditing(input.value);
-    });
-    document.body.appendChild(input);
-    inputRef.current = input;
-    setTimeout(() => {
-      input.focus();
-      input.select();
-    }, 10);
-    return () => {
-      input.remove();
-      if (inputRef.current === input) inputRef.current = null;
-    };
-  }, [isEditing]);
+  const cancelEditing = useCallback(() => {
+    setIsEditing(false);
+    onEditingChange?.(false);
+    // If this is a brand-new element with no text yet, keep the default
+    setTool?.("select");
+  }, [onEditingChange, setTool]);
 
   const handleClick = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -107,6 +62,9 @@ const TextShape: React.FC<ShapeProps> = ({
     },
     [element.id, onSelect, onEditingChange],
   );
+
+  // Plain text to display in the Konva node (used for positioning/sizing when no HTML)
+  const displayText = element.text || "Text";
 
   return (
     <>
@@ -128,9 +86,15 @@ const TextShape: React.FC<ShapeProps> = ({
         ref={textRef}
         x={element.x}
         y={element.y}
-        text={element.text || "Text"}
+        scaleX={element.scaleX || 1}
+        scaleY={element.scaleY || 1}
+        rotation={element.rotation || 0}
+        text={element.htmlText ? displayText : displayText}
         fontSize={element.fontSize || 28}
-        fill={element.strokeColor || "#1e293b"}
+        fill={
+          element.htmlText ? "transparent" : element.strokeColor || "#1e293b"
+        }
+        opacity={element.htmlText ? 0.01 : 1}
         draggable={isSingleSelected}
         onClick={handleClick}
         onTap={handleClick}
@@ -139,6 +103,16 @@ const TextShape: React.FC<ShapeProps> = ({
             ny = e.target.y();
           if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
           else onTransformEnd(element.id, { x: nx, y: ny });
+        }}
+        onTransformEnd={(e) => {
+          const node = e.target;
+          onTransformEnd(element.id, {
+            x: node.x(),
+            y: node.y(),
+            scaleX: node.scaleX(),
+            scaleY: node.scaleY(),
+            rotation: node.rotation(),
+          });
         }}
       />
       {isSingleSelected && !isEditing && (
@@ -151,6 +125,15 @@ const TextShape: React.FC<ShapeProps> = ({
           anchorFill="white"
           anchorSize={8}
           anchorCornerRadius={2}
+        />
+      )}
+
+      {/* Quill Editor Modal — rendered into document.body via portal */}
+      {isEditing && (
+        <QuillEditorModal
+          initialHtml={element.htmlText || ""}
+          onSave={finishEditing}
+          onClose={cancelEditing}
         />
       )}
     </>
