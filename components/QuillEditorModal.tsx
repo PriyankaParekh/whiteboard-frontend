@@ -588,18 +588,19 @@ const QuillEditorModal: React.FC<QuillEditorModalProps> = ({
         .ql-toolbar button.ql-active .ql-fill   { fill:#7c3aed !important; }
 
         /* Tooltip bubbles */
-        .ql-toolbar button[title] { position:relative !important; }
+        .ql-toolbar button[title] { position:relative !important; overflow:visible !important; }
         .ql-toolbar button[title]:hover::after {
-          content:attr(title); position:absolute; bottom:calc(100% + 7px); left:50%;
+          content:attr(title); position:absolute; top:calc(100% + 8px); left:50%;
           transform:translateX(-50%); background:#1e1b4b; color:#fff;
-          font-size:11px; font-weight:500; white-space:nowrap; padding:4px 9px;
+          font-size:11px; font-weight:500; white-space:nowrap; padding:5px 10px;
           border-radius:6px; pointer-events:none; z-index:999999;
-          font-family:system-ui,sans-serif; box-shadow:0 2px 8px rgba(0,0,0,0.22);
+          font-family:system-ui,sans-serif; box-shadow:0 3px 12px rgba(0,0,0,0.15);
+          line-height: normal;
         }
         .ql-toolbar button[title]:hover::before {
-          content:""; position:absolute; bottom:calc(100% + 3px); left:50%;
-          transform:translateX(-50%); border:4px solid transparent;
-          border-top-color:#1e1b4b; pointer-events:none; z-index:999999;
+          content:""; position:absolute; top:calc(100% + 2px); left:50%;
+          transform:translateX(-50%); border:5px solid transparent;
+          border-bottom-color:#1e1b4b; pointer-events:none; z-index:999999;
         }
 
         /* Picker labels */
