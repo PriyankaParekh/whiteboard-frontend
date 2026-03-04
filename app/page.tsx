@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import LandingPage from "@/components/Home";
 import React from "react";
 
