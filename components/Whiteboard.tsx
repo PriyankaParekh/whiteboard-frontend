@@ -2,7 +2,7 @@
 import io from "socket.io-client";
 import { useEffect, useState } from "react";
 
-const socket = io("http://localhost:3001");
+const socket = io(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001");
 
 function Whiteboard() {
   const [roomId, setRoomId] = useState("");
