@@ -1302,20 +1302,45 @@ export default function Canvas({ id }: { id: string }) {
   const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const lastSentSnapshotRef = useRef<Map<string, string>>(new Map());
+  const [roomUsers, setRoomUsers] = useState<
+    Array<{ name: string; color: string; socketId: string }>
+  >([]);
+  const [toasts, setToasts] = useState<
+    Array<{ id: number; message: string; color: string }>
+  >([]);
+  const [copied, setCopied] = useState(false);
+  const userName =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("name") || "Anonymous"
+      : "Anonymous";
   const prevStateRef = useRef<{
     elements: WhiteboardElement[];
     historyIndex: number;
   } | null>(null);
-  useEffect(() => {
-    socket.connect();
-    socket.emit("join_room", id);
 
+  const showToast = useCallback((message: string, color: string) => {
+    const tid = Date.now();
+    setToasts((prev) => [...prev, { id: tid, message, color }]);
+    setTimeout(
+      () => setToasts((prev) => prev.filter((t) => t.id !== tid)),
+      3500,
+    );
+  }, []);
+
+  const handleCopyId = useCallback(() => {
+    navigator.clipboard.writeText(id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    showToast("Room ID copied to clipboard!", "#4f46e5");
+  }, [id, showToast]);
+
+  useEffect(() => {
+    // ── 1. Register ALL listeners FIRST, before connect
     const handleLoad = (data: WhiteboardElement[]) => {
       const map = new Map<string, WhiteboardElement>();
       for (const item of data) map.set(item.id, item);
       let deduped = Array.from(map.values());
 
-      // If server sent nothing, try the localStorage backup written on last unload
       if (deduped.length === 0) {
         try {
           const raw = localStorage.getItem(`wb_backup_${id}`);
@@ -1323,7 +1348,6 @@ export default function Canvas({ id }: { id: string }) {
             const parsed: WhiteboardElement[] = JSON.parse(raw);
             if (parsed.length > 0) {
               deduped = parsed;
-              // Re-emit so server gets them properly saved
               for (const el of parsed) {
                 socket.emit("draw_element", { roomId: id, element: el });
               }
@@ -1337,6 +1361,21 @@ export default function Canvas({ id }: { id: string }) {
       snapshot.clear();
       for (const el of deduped) snapshot.set(el.id, JSON.stringify(el));
     };
+
+    const handleReceive = (el: WhiteboardElement) => {
+      const state = useStore.getState();
+      const exists = state.elements.find((e) => e.id === el.id);
+      if (exists) state.updateElement(el.id, el);
+      else state.addElement(el);
+      lastSentSnapshotRef.current.set(el.id, JSON.stringify(el));
+    };
+
+    const handleRemoteDelete = ({ elementId }: { elementId: string }) => {
+      const state = useStore.getState();
+      state.deleteElement(elementId);
+      lastSentSnapshotRef.current.delete(elementId);
+    };
+
     const handleRemoteBatchDelete = ({
       elementIds,
     }: {
@@ -1348,46 +1387,68 @@ export default function Canvas({ id }: { id: string }) {
         lastSentSnapshotRef.current.delete(elementId);
       }
     };
-    socket.on("load_canvas", handleLoad);
-
-    // When other user draws/updates one element
-    const handleReceive = (el: WhiteboardElement) => {
-      const state = useStore.getState();
-      const exists = state.elements.find((e) => e.id === el.id);
-      if (exists) state.updateElement(el.id, el);
-      else state.addElement(el);
-      // update snapshot so we don't re-send same payload
-      lastSentSnapshotRef.current.set(el.id, JSON.stringify(el));
-    };
-
-    socket.on("receive_draw", handleReceive);
-
-    // remove element when another client deletes it
-    const handleRemoteDelete = ({ elementId }: { elementId: string }) => {
-      const state = useStore.getState();
-      state.deleteElement(elementId);
-      // also clear snapshot so if the same id reappears later it will be sent
-      lastSentSnapshotRef.current.delete(elementId);
-    };
-
-    socket.on("element_deleted", handleRemoteDelete);
-    socket.on("elements_deleted", handleRemoteBatchDelete);
 
     const handleRoomExpired = () => {
       socket.disconnect();
       window.location.href = "/";
       alert("This room has expired.");
     };
+
+    const handleRoomUsers = (
+      users: Array<{ name: string; color: string; socketId: string }>,
+    ) => {
+      setRoomUsers(users);
+    };
+
+    const handleUserJoined = (user: {
+      name: string;
+      color: string;
+      socketId: string;
+    }) => {
+      setRoomUsers((prev) => {
+        const filtered = prev.filter((u) => u.socketId !== user.socketId);
+        return [...filtered, user];
+      });
+      showToast(`${user.name} joined`, user.color);
+    };
+
+    const handleUserLeft = ({
+      socketId,
+      name,
+    }: {
+      socketId: string;
+      name: string;
+    }) => {
+      setRoomUsers((prev) => prev.filter((u) => u.socketId !== socketId));
+      showToast(`${name} left`, "#94a3b8");
+    };
+
+    // ── 2. Register listeners BEFORE connect
+    socket.on("load_canvas", handleLoad);
+    socket.on("receive_draw", handleReceive);
+    socket.on("element_deleted", handleRemoteDelete);
+    socket.on("elements_deleted", handleRemoteBatchDelete);
     socket.on("room_expired", handleRoomExpired);
+    socket.on("room_users", handleRoomUsers);
+    socket.on("user_joined", handleUserJoined);
+    socket.on("user_left", handleUserLeft);
+
+    // ── 3. NOW connect and join
+    socket.connect();
+    socket.emit("join_room", id, userName);
 
     return () => {
       socket.off("load_canvas", handleLoad);
       socket.off("receive_draw", handleReceive);
       socket.off("element_deleted", handleRemoteDelete);
+      socket.off("elements_deleted", handleRemoteBatchDelete);
       socket.off("room_expired", handleRoomExpired);
+      socket.off("room_users", handleRoomUsers);
+      socket.off("user_joined", handleUserJoined);
+      socket.off("user_left", handleUserLeft);
       socket.disconnect();
     };
-  }, [id]);
+  }, [id, userName, showToast]);
 
   const flushChanges = React.useCallback(
     async (emitLeave = false) => {
@@ -2327,6 +2388,127 @@ export default function Canvas({ id }: { id: string }) {
       >
         {/* Save controls */}
 
+        {/* ── Top-Center: User Status ── */}
+        <div
+          style={{
+            position: "fixed",
+            top: 20,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 60,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            background: "rgba(255, 255, 255, 0.7)",
+            backdropFilter: "blur(12px) saturate(160%)",
+            WebkitBackdropFilter: "blur(12px) saturate(160%)",
+            padding: "6px 18px",
+            borderRadius: "50px",
+            border: "1px solid rgba(255, 255, 255, 0.4)",
+            boxShadow: "0 4px 16px rgba(0, 0, 0, 0.08)",
+          }}
+          className="top-center-status"
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: -8 }}>
+            {roomUsers.slice(0, 3).map((u, i) => {
+              const isMe = u.name === userName;
+              return (
+                <div
+                  key={u.socketId}
+                  title={isMe ? `${u.name} (you)` : u.name}
+                  style={{
+                    position: "relative",
+                    marginLeft: i > 0 ? -12 : 0,
+                    zIndex: 10 - i,
+                  }}
+                >
+                  {/* Pinging ring for active presence */}
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: -2,
+                      borderRadius: "50%",
+                      border: `2px solid ${u.color}`,
+                      animation:
+                        "pingRing 2s cubic-bezier(0, 0, 0.2, 1) infinite",
+                      opacity: 0,
+                      pointerEvents: "none",
+                    }}
+                  />
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: "50%",
+                      background: u.color,
+                      border: isMe
+                        ? "2.5px solid #a78bfa"
+                        : "2.5px solid white",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "white",
+                      fontWeight: 800,
+                      fontSize: 10,
+                      boxShadow: isMe
+                        ? "0 0 12px rgba(167, 139, 250, 0.4), 0 2px 6px rgba(0,0,0,0.12)"
+                        : "0 2px 6px rgba(0,0,0,0.12)",
+                      transition: "transform 0.2s ease",
+                      transform: isMe ? "scale(1.1)" : "scale(1)",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.transform =
+                        "scale(1.2) translateY(-2px)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.transform = isMe
+                        ? "scale(1.1)"
+                        : "scale(1)")
+                    }
+                  >
+                    {u.name.charAt(0).toUpperCase()}
+                  </div>
+                </div>
+              );
+            })}
+            {roomUsers.length > 3 && (
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: "#f8fafc",
+                  border: "2.5px solid white",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#64748b",
+                  fontWeight: 800,
+                  fontSize: 10,
+                  marginLeft: -12,
+                  zIndex: 0,
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+                }}
+              >
+                +{roomUsers.length - 3}
+              </div>
+            )}
+          </div>
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              color: "#334155",
+              letterSpacing: "0.3px",
+              fontFamily:
+                "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+            }}
+          >
+            {roomUsers.length} online
+          </span>
+        </div>
+
+        {/* ── Top-Right: Actions ── */}
         <div
           style={{
             position: "fixed",
@@ -2336,38 +2518,169 @@ export default function Canvas({ id }: { id: string }) {
             display: "flex",
             gap: 12,
             alignItems: "center",
-            flexWrap: "wrap",
           }}
+          className="top-right-actions"
         >
-          {/* Save Button */}
+          {/* Room ID Copy Box */}
+          <div
+            onClick={handleCopyId}
+            className="room-id-box"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 12px",
+              background: "rgba(255, 255, 255, 0.85)",
+              backdropFilter: "blur(12px) saturate(180%)",
+              WebkitBackdropFilter: "blur(12px) saturate(180%)",
+              borderRadius: "14px",
+              border: "1px solid rgba(255, 255, 255, 0.6)",
+              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.06)",
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+              transform: copied ? "scale(0.96)" : "scale(1)",
+              position: "relative",
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                <span
+                  className="room-id-label"
+                  style={{
+                    fontSize: 8,
+                    fontWeight: 800,
+                    color: "#94a3b8",
+                    textTransform: "uppercase",
+                    letterSpacing: "1px",
+                    lineHeight: 1,
+                    marginBottom: 1,
+                  }}
+                >
+                  Room
+                </span>
+                <span
+                  className="share-label"
+                  style={{
+                    fontSize: 8,
+                    fontWeight: 800,
+                    color: "#a78bfa",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    lineHeight: 1,
+                  }}
+                >
+                  • SHARE
+                </span>
+                <span
+                  className="mobile-share-text"
+                  style={{
+                    display: "none",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: "#64748b",
+                    letterSpacing: "0.2px",
+                  }}
+                >
+                  share room id
+                </span>
+              </div>
+              <span
+                className="room-id-value"
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#1e293b",
+                  fontFamily: "monospace",
+                  lineHeight: 1,
+                  letterSpacing: "-0.2px",
+                }}
+              >
+                {id.slice(0, 4)}...{id.slice(-4)}
+              </span>
+            </div>
+
+            <div
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: "8px",
+                background: copied ? "#10b981" : "#f1f5f9",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: copied ? "white" : "#64748b",
+                transition: "all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+              }}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ width: 13, height: 13 }}
+              >
+                {copied ? (
+                  <polyline points="20 6 9 17 4 12" />
+                ) : (
+                  <>
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </>
+                )}
+              </svg>
+            </div>
+
+            {copied && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "-32px",
+                  right: "0",
+                  background: "#0f172a",
+                  color: "white",
+                  padding: "5px 10px",
+                  borderRadius: "50px",
+                  fontSize: "9px",
+                  fontWeight: 700,
+                  animation:
+                    "slideUpToast 0.3s cubic-bezier(0.16, 1, 0.3, 1) both",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                  pointerEvents: "none",
+                  zIndex: 100,
+                }}
+              >
+                Copied!
+              </div>
+            )}
+          </div>
+
           <button
             onClick={handleManualSave}
             style={{
-              background:
-                "linear-gradient(135deg, rgba(236, 240, 241, 0.9) 0%, rgba(207, 216, 220, 0.9) 100%)",
-              color: "rgba(52, 73, 94, 0.95)",
-              padding: "10px 18px",
-              borderRadius: 12,
-              border: "1px solid rgba(189, 195, 199, 0.3)",
-              boxShadow:
-                "0 8px 20px rgba(174, 190, 205, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.8)",
+              background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+              color: "#334155",
+              padding: "10px 20px",
+              borderRadius: "14px",
+              border: "1px solid rgba(203, 213, 225, 0.5)",
+              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.05), inset 0 1px 0 white",
               cursor: "pointer",
-              fontWeight: 600,
+              fontWeight: 700,
               fontSize: 14,
               transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
               fontFamily:
                 "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-              letterSpacing: "-0.3px",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translateY(-3px)";
+              e.currentTarget.style.transform = "translateY(-2px)";
               e.currentTarget.style.boxShadow =
-                "0 12px 28px rgba(174, 190, 205, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.8)";
+                "0 8px 20px rgba(0,0,0,0.06), inset 0 1px 0 white";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.transform = "translateY(0)";
               e.currentTarget.style.boxShadow =
-                "0 8px 20px rgba(174, 190, 205, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.8)";
+                "0 4px 12px rgba(0,0,0,0.05), inset 0 1px 0 white";
             }}
           >
             Save
@@ -2378,15 +2691,15 @@ export default function Canvas({ id }: { id: string }) {
             style={{
               minWidth: 130,
               padding: "10px 16px",
-              borderRadius: 12,
+              borderRadius: 14,
               background: styles.bgColor,
               border: `1.5px solid ${styles.borderColor}`,
               display: "flex",
               alignItems: "center",
               gap: 10,
-              fontSize: 13,
+              fontSize: 12,
               color: styles.textColor,
-              fontWeight: 500,
+              fontWeight: 600,
               transition: "all 0.3s ease-out",
               backdropFilter: "blur(8px)",
               fontFamily:
@@ -2394,92 +2707,44 @@ export default function Canvas({ id }: { id: string }) {
               boxShadow: `inset 0 1px 2px rgba(255, 255, 255, 0.5), 0 4px 12px ${styles.spinnerColor}20`,
               animation:
                 autoSaveStatus === "saving" || autoSaveStatus === "pending"
-                  ? "soft-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite"
+                  ? "pulseStatus 2s infinite"
                   : "none",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                width: "100%",
-              }}
-            >
+            {autoSaveStatus === "saving" || autoSaveStatus === "pending" ? (
+              <div
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: "50%",
+                  border: `2px solid ${styles.spinnerColor}`,
+                  borderTopColor: "transparent",
+                  animation: "spin 0.8s linear infinite",
+                }}
+              />
+            ) : autoSaveStatus === "saved" ? (
               <svg
-                width="16"
-                height="16"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="2.5"
-                style={{
-                  animation:
-                    autoSaveStatus === "saving" || autoSaveStatus === "pending"
-                      ? "spin 1.5s linear infinite"
-                      : "none",
-                  color: styles.spinnerColor,
-                  flexShrink: 0,
-                }}
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ width: 14, height: 14 }}
               >
-                {autoSaveStatus === "pending" && (
-                  <circle cx="12" cy="12" r="10" />
-                )}
-                {autoSaveStatus === "saving" && (
-                  <>
-                    <circle cx="12" cy="12" r="10" opacity="0.3" />
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" />
-                  </>
-                )}
-                {autoSaveStatus === "saved" && (
-                  <polyline points="20 6 9 17 4 12" />
-                )}
-                {autoSaveStatus === "idle" && (
-                  <polyline points="20 6 9 17 4 12" />
-                )}
+                <polyline points="20 6 9 17 4 12" />
               </svg>
-              <span
-                style={{
-                  whiteSpace: "nowrap",
-                  fontSize: 13,
-                  fontWeight: 500,
-                }}
-              >
-                {autoSaveStatus === "pending" && "Pending…"}
-                {autoSaveStatus === "saving" && "Saving…"}
-                {autoSaveStatus === "saved" && "Saved"}
-                {autoSaveStatus === "idle" && "All saved"}
-              </span>
-            </div>
-
-            {autoSaveStatus === "saved" && lastSavedAt && (
-              <span
-                style={{
-                  fontSize: 11,
-                  opacity: 0.65,
-                  marginLeft: "auto",
-                  whiteSpace: "nowrap",
-                  fontWeight: 400,
-                }}
-              >
-                {new Date(lastSavedAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
-            )}
+            ) : null}
+            <span style={{ letterSpacing: "0.2px" }}>
+              {autoSaveStatus === "pending"
+                ? "Pending changes"
+                : autoSaveStatus === "saving"
+                  ? "Saving..."
+                  : autoSaveStatus === "saved"
+                    ? "Changes saved"
+                    : "Ready"}
+            </span>
           </div>
-
-          <style>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        @keyframes soft-pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.7; }
-        }
-      `}</style>
         </div>
 
         {/* Canvas background with dots - fixed to viewport, moves with pan */}
@@ -2826,6 +3091,100 @@ export default function Canvas({ id }: { id: string }) {
             ) : null;
           })()}
 
+        {/* ── YIO Logo (top-left) ── */}
+        <div
+          className="top-left-logo"
+          style={{
+            position: "fixed",
+            top: 20,
+            left: 20,
+            zIndex: 60,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            pointerEvents: "none",
+            userSelect: "none",
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "'Syne', sans-serif",
+              fontSize: "1.8rem",
+              fontWeight: 800,
+              letterSpacing: "-1px",
+              background:
+                "linear-gradient(135deg, #a78bfa 0%, #f472b6 55%, #38bdf8 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.1))",
+            }}
+          >
+            YIO
+          </div>
+        </div>
+
+        {/* Keyframe for pinging ring */}
+        <style>{`
+  @keyframes pingRing {
+    0%   { transform: scale(1);    opacity: 0.5; }
+    70%  { transform: scale(1.45); opacity: 0;   }
+    100% { transform: scale(1.45); opacity: 0;   }
+  }
+  @keyframes slideUpToast {
+    from { opacity: 0; transform: translateY(12px) scale(0.95); }
+    to   { opacity: 1; transform: translateY(0)    scale(1);    }
+  }
+  @media (max-width: 800px) {
+    .top-left-logo, .top-center-status {
+      top: 15px !important;
+    }
+    .top-center-status {
+      padding: 4px 12px !important;
+    }
+    .top-right-actions {
+      top: auto !important;
+      bottom: 25px !important;
+      right: 20px !important;
+      left: 20px !important;
+      justify-content: center !important;
+      gap: 10px !important;
+    }
+    .room-id-box {
+      flex: 1 !important;
+      justify-content: center !important;
+    }
+  }
+  @media (max-width: 500px) {
+    .room-id-label, .share-label, .room-id-value {
+      display: none !important;
+    }
+    .mobile-share-text {
+      display: block !important;
+      font-size: 11px !important;
+      color: #64748b !important;
+      font-weight: 600 !important;
+    }
+    .top-center-status span {
+      display: none;
+    }
+    .top-right-actions {
+      bottom: 20px !important;
+    }
+    /* Horizontal alignment for phone view */
+    .top-right-actions {
+       position: fixed !important;
+       top: 15px !important;
+       bottom: auto !important;
+       right: 15px !important;
+       left: auto !important;
+       width: auto !important;
+       z-index: 100 !important;
+    }
+    .room-id-box {
+      padding: 6px 12px !important;
+    }
+  }
+`}</style>
         <ControlPanel
           scale={scale}
           onZoomIn={handleZoomIn}
