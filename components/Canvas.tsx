@@ -1311,7 +1311,7 @@ export default function Canvas({ id }: { id: string }) {
   const [copied, setCopied] = useState(false);
   const userName =
     typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("name") || "Anonymous"
+      ? localStorage.getItem("wb_user_name") || "Anonymous"
       : "Anonymous";
   const prevStateRef = useRef<{
     elements: WhiteboardElement[];
@@ -1345,20 +1345,7 @@ export default function Canvas({ id }: { id: string }) {
       for (const item of data) map.set(item.id, item);
       let deduped = Array.from(map.values());
 
-      if (deduped.length === 0) {
-        try {
-          const raw = localStorage.getItem(`wb_backup_${id}`);
-          if (raw) {
-            const parsed: WhiteboardElement[] = JSON.parse(raw);
-            if (parsed.length > 0) {
-              deduped = parsed;
-              for (const el of parsed) {
-                socket.emit("draw_element", { roomId: id, element: el });
-              }
-            }
-          }
-        } catch (_) {}
-      }
+      // Deduped list is already populated from MongoDB/Redis via 'data'
 
       useStore.getState().setElements(deduped);
       const snapshot = lastSentSnapshotRef.current;
@@ -1465,6 +1452,12 @@ export default function Canvas({ id }: { id: string }) {
     // ── 3. NOW connect and join
     socket.connect();
     socket.emit("join_room", id, userName);
+
+    // Save current room to localStorage for re-entry
+    localStorage.setItem("wb_last_room_id", id);
+    if (userName !== "Anonymous") {
+      localStorage.setItem("wb_user_name", userName);
+    }
 
     return () => {
       socket.off("load_canvas", handleLoad);
@@ -1577,11 +1570,7 @@ export default function Canvas({ id }: { id: string }) {
         window.clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
-      // localStorage backup — survives even if socket doesn't fire in time
-      try {
-        const els = useStore.getState().elements;
-        localStorage.setItem(`wb_backup_${id}`, JSON.stringify(els));
-      } catch (_) {}
+      // localStorage backup removed as Redis/MongoDB handle persistence
       flushChanges(true);
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
