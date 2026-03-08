@@ -2509,6 +2509,7 @@ export default function Canvas({ id }: { id: string }) {
         </div>
 
         {/* ── Top-Right: Actions ── */}
+        {/* ── Top-Right: Actions ── */}
         <div
           style={{
             position: "fixed",
@@ -2521,229 +2522,249 @@ export default function Canvas({ id }: { id: string }) {
           }}
           className="top-right-actions"
         >
-          {/* Room ID Copy Box */}
           <div
-            onClick={handleCopyId}
-            className="room-id-box"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "6px 12px",
-              background: "rgba(255, 255, 255, 0.85)",
-              backdropFilter: "blur(12px) saturate(180%)",
-              WebkitBackdropFilter: "blur(12px) saturate(180%)",
-              borderRadius: "14px",
-              border: "1px solid rgba(255, 255, 255, 0.6)",
-              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.06)",
-              cursor: "pointer",
-              transition: "all 0.2s ease",
-              transform: copied ? "scale(0.96)" : "scale(1)",
-              position: "relative",
-            }}
+            style={{ display: "flex", gap: 12, alignItems: "center" }}
+            className="actions-wrapper"
           >
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+            {/* Room ID Copy Box */}
+            <div
+              onClick={handleCopyId}
+              className="room-id-box"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "6px 12px",
+                background: "rgba(255, 255, 255, 0.85)",
+                backdropFilter: "blur(12px) saturate(180%)",
+                WebkitBackdropFilter: "blur(12px) saturate(180%)",
+                borderRadius: "14px",
+                border: "1px solid rgba(255, 255, 255, 0.6)",
+                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.06)",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                transform: copied ? "scale(0.96)" : "scale(1)",
+                position: "relative",
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <div
+                  style={{ display: "flex", alignItems: "baseline", gap: 4 }}
+                >
+                  <span
+                    className="room-id-label"
+                    style={{
+                      fontSize: 8,
+                      fontWeight: 800,
+                      color: "#94a3b8",
+                      textTransform: "uppercase",
+                      letterSpacing: "1px",
+                      lineHeight: 1,
+                      marginBottom: 1,
+                    }}
+                  >
+                    Room
+                  </span>
+                  <span
+                    className="share-label"
+                    style={{
+                      fontSize: 8,
+                      fontWeight: 800,
+                      color: "#a78bfa",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.5px",
+                      lineHeight: 1,
+                    }}
+                  >
+                    • SHARE
+                  </span>
+                  <span
+                    className="mobile-share-text"
+                    style={{
+                      display: "none",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: "#64748b",
+                      letterSpacing: "0.2px",
+                    }}
+                  >
+                    share id
+                  </span>
+                </div>
                 <span
-                  className="room-id-label"
+                  className="room-id-value"
                   style={{
-                    fontSize: 8,
-                    fontWeight: 800,
-                    color: "#94a3b8",
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "#1e293b",
+                    fontFamily: "monospace",
                     lineHeight: 1,
-                    marginBottom: 1,
+                    letterSpacing: "-0.2px",
                   }}
                 >
-                  Room
-                </span>
-                <span
-                  className="share-label"
-                  style={{
-                    fontSize: 8,
-                    fontWeight: 800,
-                    color: "#a78bfa",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    lineHeight: 1,
-                  }}
-                >
-                  • SHARE
-                </span>
-                <span
-                  className="mobile-share-text"
-                  style={{
-                    display: "none",
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: "#64748b",
-                    letterSpacing: "0.2px",
-                  }}
-                >
-                  share room id
+                  {id.slice(0, 4)}...{id.slice(-4)}
                 </span>
               </div>
-              <span
-                className="room-id-value"
+
+              <div
                 style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#1e293b",
-                  fontFamily: "monospace",
-                  lineHeight: 1,
-                  letterSpacing: "-0.2px",
+                  width: 26,
+                  height: 26,
+                  borderRadius: "8px",
+                  background: copied ? "#10b981" : "#f1f5f9",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: copied ? "white" : "#64748b",
+                  transition:
+                    "all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
                 }}
               >
-                {id.slice(0, 4)}...{id.slice(-4)}
-              </span>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ width: 13, height: 13 }}
+                >
+                  {copied ? (
+                    <polyline points="20 6 9 17 4 12" />
+                  ) : (
+                    <>
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </>
+                  )}
+                </svg>
+              </div>
+
+              {copied && (
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: "-32px",
+                    right: "0",
+                    background: "#0f172a",
+                    color: "white",
+                    padding: "5px 10px",
+                    borderRadius: "50px",
+                    fontSize: "9px",
+                    fontWeight: 700,
+                    animation:
+                      "slideUpToast 0.3s cubic-bezier(0.16, 1, 0.3, 1) both",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                    pointerEvents: "none",
+                    zIndex: 100,
+                  }}
+                >
+                  Copied!
+                </div>
+              )}
             </div>
 
             <div
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: "8px",
-                background: copied ? "#10b981" : "#f1f5f9",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: copied ? "white" : "#64748b",
-                transition: "all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
-              }}
+              className="save-status-group"
+              style={{ display: "flex", gap: 12, alignItems: "center" }}
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ width: 13, height: 13 }}
-              >
-                {copied ? (
-                  <polyline points="20 6 9 17 4 12" />
-                ) : (
-                  <>
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </>
-                )}
-              </svg>
-            </div>
-
-            {copied && (
-              <div
+              <button
+                onClick={handleManualSave}
+                className="save-button"
                 style={{
-                  position: "absolute",
-                  bottom: "-32px",
-                  right: "0",
-                  background: "#0f172a",
-                  color: "white",
-                  padding: "5px 10px",
-                  borderRadius: "50px",
-                  fontSize: "9px",
+                  background:
+                    "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+                  color: "#334155",
+                  padding: "10px 20px",
+                  borderRadius: "14px",
+                  border: "1px solid rgba(203, 213, 225, 0.5)",
+                  boxShadow:
+                    "0 4px 12px rgba(0, 0, 0, 0.05), inset 0 1px 0 white",
+                  cursor: "pointer",
                   fontWeight: 700,
-                  animation:
-                    "slideUpToast 0.3s cubic-bezier(0.16, 1, 0.3, 1) both",
-                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                  pointerEvents: "none",
-                  zIndex: 100,
+                  fontSize: 14,
+                  transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+                  fontFamily:
+                    "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow =
+                    "0 8px 20px rgba(0,0,0,0.06), inset 0 1px 0 white";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow =
+                    "0 4px 12px rgba(0,0,0,0.05), inset 0 1px 0 white";
                 }}
               >
-                Copied!
-              </div>
-            )}
-          </div>
+                Save
+              </button>
 
-          <button
-            onClick={handleManualSave}
-            style={{
-              background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
-              color: "#334155",
-              padding: "10px 20px",
-              borderRadius: "14px",
-              border: "1px solid rgba(203, 213, 225, 0.5)",
-              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.05), inset 0 1px 0 white",
-              cursor: "pointer",
-              fontWeight: 700,
-              fontSize: 14,
-              transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-              fontFamily:
-                "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "translateY(-2px)";
-              e.currentTarget.style.boxShadow =
-                "0 8px 20px rgba(0,0,0,0.06), inset 0 1px 0 white";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "translateY(0)";
-              e.currentTarget.style.boxShadow =
-                "0 4px 12px rgba(0,0,0,0.05), inset 0 1px 0 white";
-            }}
-          >
-            Save
-          </button>
-
-          {/* Status Badge */}
-          <div
-            style={{
-              minWidth: 130,
-              padding: "10px 16px",
-              borderRadius: 14,
-              background: styles.bgColor,
-              border: `1.5px solid ${styles.borderColor}`,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              fontSize: 12,
-              color: styles.textColor,
-              fontWeight: 600,
-              transition: "all 0.3s ease-out",
-              backdropFilter: "blur(8px)",
-              fontFamily:
-                "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-              boxShadow: `inset 0 1px 2px rgba(255, 255, 255, 0.5), 0 4px 12px ${styles.spinnerColor}20`,
-              animation:
-                autoSaveStatus === "saving" || autoSaveStatus === "pending"
-                  ? "pulseStatus 2s infinite"
-                  : "none",
-            }}
-          >
-            {autoSaveStatus === "saving" || autoSaveStatus === "pending" ? (
+              {/* Status Badge */}
               <div
+                className="status-badge"
                 style={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: "50%",
-                  border: `2px solid ${styles.spinnerColor}`,
-                  borderTopColor: "transparent",
-                  animation: "spin 0.8s linear infinite",
+                  minWidth: 130,
+                  padding: "10px 16px",
+                  borderRadius: 14,
+                  background: styles.bgColor,
+                  border: `1.5px solid ${styles.borderColor}`,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  fontSize: 12,
+                  color: styles.textColor,
+                  fontWeight: 600,
+                  transition: "all 0.3s ease-out",
+                  backdropFilter: "blur(8px)",
+                  fontFamily:
+                    "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+                  boxShadow: `inset 0 1px 2px rgba(255, 255, 255, 0.5), 0 4px 12px ${styles.spinnerColor}20`,
+                  animation:
+                    autoSaveStatus === "saving" || autoSaveStatus === "pending"
+                      ? "pulseStatus 2s infinite"
+                      : "none",
                 }}
-              />
-            ) : autoSaveStatus === "saved" ? (
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ width: 14, height: 14 }}
               >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            ) : null}
-            <span style={{ letterSpacing: "0.2px" }}>
-              {autoSaveStatus === "pending"
-                ? "Pending changes"
-                : autoSaveStatus === "saving"
-                  ? "Saving..."
-                  : autoSaveStatus === "saved"
-                    ? "Changes saved"
-                    : "Ready"}
-            </span>
+                {autoSaveStatus === "saving" || autoSaveStatus === "pending" ? (
+                  <div
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: "50%",
+                      border: `2px solid ${styles.spinnerColor}`,
+                      borderTopColor: "transparent",
+                      animation: "spin 0.8s linear infinite",
+                    }}
+                  />
+                ) : autoSaveStatus === "saved" ? (
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ width: 14, height: 14 }}
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : null}
+                <span
+                  className="status-text"
+                  style={{ letterSpacing: "0.2px" }}
+                >
+                  {autoSaveStatus === "pending"
+                    ? "Pending"
+                    : autoSaveStatus === "saving"
+                      ? "Saving..."
+                      : autoSaveStatus === "saved"
+                        ? "Saved"
+                        : "Ready"}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -3135,53 +3156,77 @@ export default function Canvas({ id }: { id: string }) {
     to   { opacity: 1; transform: translateY(0)    scale(1);    }
   }
   @media (max-width: 800px) {
-    .top-left-logo, .top-center-status {
+    .top-left-logo {
       top: 15px !important;
+      left: 15px !important;
     }
     .top-center-status {
-      padding: 4px 12px !important;
+      top: 15px !important;
+      padding: 4px 10px !important;
+      left: 50% !important;
+      transform: translateX(-50%) !important;
     }
     .top-right-actions {
-      top: auto !important;
-      bottom: 25px !important;
-      right: 20px !important;
-      left: 20px !important;
-      justify-content: center !important;
-      gap: 10px !important;
+      top: 15px !important;
+      right: 15px !important;
+      gap: 6px !important;
+    }
+    .save-status-group {
+      position: fixed !important;
+      bottom: 15px !important;
+      left: 50% !important;
+      transform: translateX(-50%) !important;
+      background: rgba(255, 255, 255, 0.8) !important;
+      backdrop-filter: blur(8px) !important;
+      padding: 6px 12px !important;
+      border-radius: 50px !important;
+      border: 1px solid rgba(0,0,0,0.05) !important;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.08) !important;
+      width: auto !important;
+      z-index: 100 !important;
+      white-space: nowrap !important;
+      gap: 8px !important;
+    }
+    .save-button {
+      padding: 6px 14px !important;
+      font-size: 11px !important;
+      border-radius: 50px !important;
+    }
+    .status-badge {
+      min-width: auto !important;
+      padding: 6px 10px !important;
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      gap: 6px !important;
+    }
+    .status-text {
+      font-size: 10px !important;
     }
     .room-id-box {
-      flex: 1 !important;
-      justify-content: center !important;
+      padding: 4px 8px !important;
+      border-radius: 8px !important;
     }
   }
   @media (max-width: 500px) {
-    .room-id-label, .share-label, .room-id-value {
+    .top-left-logo div {
+      font-size: 1.5rem !important;
+    }
+    .top-center-status span {
+      display: none !important;
+    }
+    .room-id-label, .room-id-value, .share-label {
       display: none !important;
     }
     .mobile-share-text {
       display: block !important;
-      font-size: 11px !important;
-      color: #64748b !important;
-      font-weight: 600 !important;
+      font-size: 9px !important;
+      font-weight: 800 !important;
     }
-    .top-center-status span {
-      display: none;
-    }
-    .top-right-actions {
-      bottom: 20px !important;
-    }
-    /* Horizontal alignment for phone view */
-    .top-right-actions {
-       position: fixed !important;
-       top: 15px !important;
-       bottom: auto !important;
-       right: 15px !important;
-       left: auto !important;
-       width: auto !important;
-       z-index: 100 !important;
-    }
-    .room-id-box {
-      padding: 6px 12px !important;
+    .save-status-group {
+      bottom: 10px !important;
+      gap: 4px !important;
+      padding: 4px 10px !important;
     }
   }
 `}</style>
