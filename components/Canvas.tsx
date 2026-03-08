@@ -1317,6 +1317,10 @@ export default function Canvas({ id }: { id: string }) {
     elements: WhiteboardElement[];
     historyIndex: number;
   } | null>(null);
+  const [remoteCursors, setRemoteCursors] = useState<
+    Map<string, { x: number; y: number; userName: string; color: string }>
+  >(new Map());
+  const lastEmitTimeRef = useRef<number>(0);
 
   const showToast = useCallback((message: string, color: string) => {
     const tid = Date.now();
@@ -1420,7 +1424,31 @@ export default function Canvas({ id }: { id: string }) {
       name: string;
     }) => {
       setRoomUsers((prev) => prev.filter((u) => u.socketId !== socketId));
+      setRemoteCursors((prev) => {
+        const next = new Map(prev);
+        next.delete(socketId);
+        return next;
+      });
       showToast(`${name} left`, "#94a3b8");
+    };
+
+    const handleCursorMoved = (data: {
+      socketId: string;
+      x: number;
+      y: number;
+      userName: string;
+      color: string;
+    }) => {
+      setRemoteCursors((prev) => {
+        const next = new Map(prev);
+        next.set(data.socketId, {
+          x: data.x,
+          y: data.y,
+          userName: data.userName,
+          color: data.color,
+        });
+        return next;
+      });
     };
 
     // ── 2. Register listeners BEFORE connect
@@ -1432,6 +1460,7 @@ export default function Canvas({ id }: { id: string }) {
     socket.on("room_users", handleRoomUsers);
     socket.on("user_joined", handleUserJoined);
     socket.on("user_left", handleUserLeft);
+    socket.on("cursor_moved", handleCursorMoved);
 
     // ── 3. NOW connect and join
     socket.connect();
@@ -1446,6 +1475,7 @@ export default function Canvas({ id }: { id: string }) {
       socket.off("room_users", handleRoomUsers);
       socket.off("user_joined", handleUserJoined);
       socket.off("user_left", handleUserLeft);
+      socket.off("cursor_moved", handleCursorMoved);
       socket.disconnect();
     };
   }, [id, userName, showToast]);
@@ -2197,6 +2227,24 @@ export default function Canvas({ id }: { id: string }) {
 
   const handleMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
+      const pos = getPointerPos();
+
+      // Broadcast cursor position (throttled to ~30ms)
+      const now = Date.now();
+      if (now - lastEmitTimeRef.current > 30) {
+        const me = roomUsers.find((u) => u.socketId === socket.id);
+        if (me) {
+          socket.emit("cursor_move", {
+            roomId: id,
+            x: pos.x,
+            y: pos.y,
+            userName: me.name,
+            color: me.color,
+          });
+          lastEmitTimeRef.current = now;
+        }
+      }
+
       if (isDraggingStage && (e.evt.ctrlKey || e.evt.metaKey)) {
         const stage = stageRef.current;
         if (!stage) return;
@@ -2226,7 +2274,6 @@ export default function Canvas({ id }: { id: string }) {
       ) {
         const pts = currentElement.points;
         const last = pts[pts.length - 1];
-        const pos = getPointerPos();
         const dx = pos.x - last.x;
         const dy = pos.y - last.y;
         if (Math.hypot(dx, dy) > GAP_THRESHOLD) {
@@ -2237,7 +2284,7 @@ export default function Canvas({ id }: { id: string }) {
         }
       }
 
-      updateDraw(getPointerPos());
+      updateDraw(pos);
     },
     [
       isDraggingStage,
@@ -2249,6 +2296,8 @@ export default function Canvas({ id }: { id: string }) {
       currentElement,
       finishDraw,
       startDraw,
+      roomUsers,
+      id,
     ],
   );
 
@@ -2321,9 +2370,25 @@ export default function Canvas({ id }: { id: string }) {
         return;
       }
 
-      if (!isDrawing) return;
       const touch = e.touches[0];
       const pos = getTouchPos(touch);
+
+      // Broadcast cursor position (throttled to ~30ms)
+      const now = Date.now();
+      if (now - lastEmitTimeRef.current > 30) {
+        const me = roomUsers.find((u) => u.socketId === socket.id);
+        if (me) {
+          socket.emit("cursor_move", {
+            roomId: id,
+            x: pos.x,
+            y: pos.y,
+            userName: me.name,
+            color: me.color,
+          });
+          lastEmitTimeRef.current = now;
+        }
+      }
+
       if (
         selectedTool === "pencil" &&
         currentElement &&
@@ -2914,6 +2979,8 @@ export default function Canvas({ id }: { id: string }) {
             )}
 
             {/* Preview while drawing */}
+
+            {/* Preview while drawing */}
             {isDrawing && currentElement && (
               <>
                 {currentElement.type === "rectangle" && (
@@ -3048,6 +3115,46 @@ export default function Canvas({ id }: { id: string }) {
                 )}
               </>
             )}
+          </Layer>
+
+          {/* Dedicated Layer for Remote Cursors (Performance optimization) */}
+          <Layer>
+            {Array.from(remoteCursors.entries())
+              .filter(([socketId]) => socketId !== socket.id)
+              .map(([socketId, cursor]) => (
+                <Group
+                  key={socketId}
+                  x={cursor.x}
+                  y={cursor.y}
+                  listening={false}
+                >
+                  {/* Cursor Arrow */}
+                  <Line
+                    points={[0, 0, 0, 15, 4, 11, 10, 11]}
+                    closed
+                    fill={cursor.color}
+                    stroke="white"
+                    strokeWidth={1.5}
+                  />
+                  {/* Name Label Background */}
+                  <Rect
+                    x={12}
+                    y={12}
+                    width={cursor.userName.length * 7 + 10}
+                    height={16}
+                    fill={cursor.color}
+                    cornerRadius={4}
+                  />
+                  <KonvaText
+                    text={cursor.userName}
+                    x={16}
+                    y={15}
+                    fill="white"
+                    fontSize={10}
+                    fontStyle="bold"
+                  />
+                </Group>
+              ))}
           </Layer>
         </Stage>
 
