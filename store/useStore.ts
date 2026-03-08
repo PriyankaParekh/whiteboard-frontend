@@ -317,6 +317,7 @@ export const useStore = create<CanvasStore>((set, get) => ({
   ungroupSelected: () =>
     set((state) => {
       if (state.selectedElementIds.length === 0) return state;
+      // Collect ALL groupIds touched by ANY selected element (even if only 1 from group is selected)
       const groupIds = new Set(
         state.elements
           .filter(
@@ -325,6 +326,7 @@ export const useStore = create<CanvasStore>((set, get) => ({
           .map((el) => el.groupId as string),
       );
       if (groupIds.size === 0) return state;
+      // Remove groupId from ALL elements belonging to those groups (not just selected ones)
       const newElements = state.elements.map((el) =>
         el.groupId && groupIds.has(el.groupId)
           ? { ...el, groupId: undefined }
@@ -334,6 +336,8 @@ export const useStore = create<CanvasStore>((set, get) => ({
       newHistory.push(newElements);
       return {
         elements: newElements,
+        selectedElementIds: [],
+        selectedElementId: null,
         history: newHistory,
         historyIndex: newHistory.length - 1,
       };

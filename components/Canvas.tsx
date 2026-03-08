@@ -61,7 +61,7 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
   const groupRef = useRef<Konva.Group>(null);
   const rectRef = useRef<Konva.Rect>(null);
   const trRef = useRef<Konva.Transformer>(null);
-  const PADDING = 12; // increased padding to account for stroke width
+  const PADDING = 16; // increased padding to account for stroke width
 
   // Compute bounding box of all selected elements
   let minX = Infinity,
@@ -75,16 +75,18 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
     const strokePadding = Math.ceil(strokeWidth / 2) + 2; // account for half stroke + small buffer
 
     if (el.type === "circle") {
-      // Circle: x and y are stored as top-left corner in element data
-      // but width/height define the bounding box
-      const x = el.x ?? 0,
-        y = el.y ?? 0;
-      const w = el.width ?? 100,
-        h = el.height ?? 100;
-      minX = Math.min(minX, x - strokePadding);
-      minY = Math.min(minY, y - strokePadding);
-      maxX = Math.max(maxX, x + w + strokePadding);
-      maxY = Math.max(maxY, y + h + strokePadding);
+      const x = el.x ?? 0;
+      const y = el.y ?? 0;
+      const w = el.width ?? 100;
+      const h = el.height ?? 100;
+      const radius = Math.max(w, h) / 2;
+      // Use center-based calculation as safety net
+      const cx = x + radius;
+      const cy = y + radius;
+      minX = Math.min(minX, cx - radius - strokePadding);
+      minY = Math.min(minY, cy - radius - strokePadding);
+      maxX = Math.max(maxX, cx + radius + strokePadding);
+      maxY = Math.max(maxY, cy + radius + strokePadding);
     } else if (el.points && el.points.length > 0) {
       // For elements with points (polygon, arrow, line, pencil)
       // need to account for stroke width extending beyond points
@@ -96,16 +98,15 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
       }
     } else if (el.type === "text") {
       // Text: use x, y and estimate dimensions from fontSize and text length
-      const x = el.x ?? 0,
-        y = el.y ?? 0;
-      const fontSize = el.fontSize || 28;
-      const textLength = (el.text || "Text").length;
-      const estimatedWidth = Math.max(textLength * (fontSize * 0.6), 100);
-      const estimatedHeight = fontSize + 8;
+      const x = el.x ?? 0;
+      const y = el.y ?? 0;
+      // Use actual measured dimensions stored by ResizeObserver, not estimates
+      const w = el.width ?? 100;
+      const h = el.height ?? 40;
       minX = Math.min(minX, x - strokePadding);
       minY = Math.min(minY, y - strokePadding);
-      maxX = Math.max(maxX, x + estimatedWidth + strokePadding);
-      maxY = Math.max(maxY, y + estimatedHeight + strokePadding);
+      maxX = Math.max(maxX, x + w + strokePadding);
+      maxY = Math.max(maxY, y + h + strokePadding);
     } else {
       // Default for rectangles, triangles, diamonds, sticky notes
       const x = el.x ?? 0,
@@ -1063,6 +1064,7 @@ interface RichTextOverlayElProps {
   updateElement: (id: string, attrs: Partial<WhiteboardElement>) => void;
   flushChanges: (emitLeave?: boolean) => void;
   setQuillEditingElementId: (id: string | null) => void;
+  selectedTool: string;
   isAnyTextEditingRef: React.MutableRefObject<boolean>;
 }
 // ─── Drop-in replacement for the RichTextOverlayEl component in Canvas.tsx ───
@@ -1079,6 +1081,7 @@ interface RichTextOverlayElProps {
   setQuillEditingElementId: (id: string | null) => void;
   isAnyTextEditingRef: React.MutableRefObject<boolean>;
   lastOverlaySelectTimeRef: React.MutableRefObject<number>; // ← NEW
+  selectedTool: string;
 }
 
 // Updated component:
@@ -1093,6 +1096,7 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
   setQuillEditingElementId,
   isAnyTextEditingRef,
   lastOverlaySelectTimeRef, // ← NEW
+  selectedTool,
 }) => {
   const lastOverlayClickRef = useRef<number>(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1202,7 +1206,7 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
         minWidth: 20,
         minHeight: 16,
         overflow: "visible",
-        pointerEvents: "auto",
+        pointerEvents: selectedTool === "select" ? "none" : "auto",
         userSelect: "none",
         cursor: "move",
         touchAction: "none",
@@ -1239,7 +1243,8 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
     </div>
   );
 };
-
+// let _elementCounter = 0;
+// const newId = (type: string) => `${type}-${Date.now()}-${++_elementCounter}`;
 // ─── Main Canvas ─────────────────────────────────────────────────────────────
 export default function Canvas({ id }: { id: string }) {
   const {
@@ -1828,6 +1833,19 @@ export default function Canvas({ id }: { id: string }) {
           flushChanges(false);
           saveTimerRef.current = null;
         }, 100);
+      } else if (
+        (e.key === "g" || e.key === "G") &&
+        (e.ctrlKey || e.metaKey) &&
+        !e.shiftKey
+      ) {
+        e.preventDefault();
+        useStore.getState().groupSelected();
+        setAutoSaveStatus("pending");
+        if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = window.setTimeout(() => {
+          flushChanges(false);
+          saveTimerRef.current = null;
+        }, 100);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -1845,13 +1863,6 @@ export default function Canvas({ id }: { id: string }) {
   const startDraw = useCallback(
     (pos: { x: number; y: number }, isOnStage: boolean) => {
       if (isAnyTextEditingRef.current) return;
-
-      // if a previous drawing session didn't finish (e.g. mouse up outside stage)
-      // force it to complete before starting a new one. this prevents the
-      // currentElement from being overwritten and causing strokes to join.
-      if (isDrawing && currentElement) {
-        finishDrawRef.current();
-      }
 
       drawStartRef.current = pos;
 
@@ -1943,7 +1954,7 @@ export default function Canvas({ id }: { id: string }) {
         setIsDrawing(true);
       } else if (selectedTool === "pencil") {
         setCurrentElement({
-          id: `pencil-${Date.now()}`,
+          id: `pencil-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           type: "pencil",
           x: 0,
           y: 0,
@@ -2112,11 +2123,18 @@ export default function Canvas({ id }: { id: string }) {
         const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
         return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
       });
+      // Store minX/minY as el.x/el.y so it's always consistent with points
+      const pMinX = Math.min(...points.map((p) => p.x));
+      const pMinY = Math.min(...points.map((p) => p.y));
+      const pMaxX = Math.max(...points.map((p) => p.x));
+      const pMaxY = Math.max(...points.map((p) => p.y));
       const el = {
         id: currentElement.id as string,
         type: "polygon",
-        x: currentElement.x || 0,
-        y: currentElement.y || 0,
+        x: pMinX, // ← consistent with PolygonShape renderer
+        y: pMinY, // ← consistent with PolygonShape renderer
+        width: pMaxX - pMinX, // ← store actual width
+        height: pMaxY - pMinY, // ← store actual height
         points,
         strokeColor: currentElement.strokeColor,
         fillColor: currentElement.fillColor,
@@ -2210,10 +2228,6 @@ export default function Canvas({ id }: { id: string }) {
     [getPointerPos, startDraw],
   );
 
-  // threshold (in stage coordinates) beyond which a pencil stroke should
-  // automatically break into a new element even if the pointer is still down.
-  const GAP_THRESHOLD = 80;
-
   const handleMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const pos = getPointerPos();
@@ -2252,27 +2266,6 @@ export default function Canvas({ id }: { id: string }) {
       }
 
       if (!isDrawing) return;
-
-      // if we're drawing with pencil and the pointer jumps a long distance,
-      // finalize the current stroke and start a new one to avoid the long
-      // connection line the user is seeing.
-      if (
-        selectedTool === "pencil" &&
-        currentElement &&
-        currentElement.points
-      ) {
-        const pts = currentElement.points;
-        const last = pts[pts.length - 1];
-        const dx = pos.x - last.x;
-        const dy = pos.y - last.y;
-        if (Math.hypot(dx, dy) > GAP_THRESHOLD) {
-          // finish existing stroke and begin a new segment
-          finishDraw();
-          startDraw(pos, true);
-          return;
-        }
-      }
-
       updateDraw(pos);
     },
     [
@@ -2375,22 +2368,6 @@ export default function Canvas({ id }: { id: string }) {
             color: me.color,
           });
           lastEmitTimeRef.current = now;
-        }
-      }
-
-      if (
-        selectedTool === "pencil" &&
-        currentElement &&
-        currentElement.points
-      ) {
-        const pts = currentElement.points;
-        const last = pts[pts.length - 1];
-        const dx = pos.x - last.x;
-        const dy = pos.y - last.y;
-        if (Math.hypot(dx, dy) > GAP_THRESHOLD) {
-          finishDraw();
-          startDraw(pos, true);
-          return;
         }
       }
       updateDraw(pos);
@@ -3177,6 +3154,7 @@ export default function Canvas({ id }: { id: string }) {
                   setQuillEditingElementId={setQuillEditingElementId}
                   isAnyTextEditingRef={isAnyTextEditingRef}
                   lastOverlaySelectTimeRef={lastOverlaySelectTimeRef}
+                  selectedTool={selectedTool}
                 />
               );
             })}

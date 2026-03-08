@@ -117,10 +117,12 @@ const TextShape: React.FC<ShapeProps> = ({
         scaleX={element.scaleX || 1}
         scaleY={element.scaleY || 1}
         rotation={element.rotation || 0}
-        fill="transparent"
+        fill="rgba(0,0,0,0.001)"
         stroke="transparent"
         strokeWidth={0}
-        draggable={isSingleSelected || (isSelected && !isSingleSelected)}
+        hitStrokeWidth={0}
+        perfectDrawEnabled={false}
+        draggable={isSingleSelected}
         onClick={handleClick}
         onTap={handleClick}
         onDragEnd={(e) => {

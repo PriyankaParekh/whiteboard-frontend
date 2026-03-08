@@ -153,19 +153,31 @@ const StickyShape: React.FC<ShapeProps> = ({
           wrap="word"
           ellipsis
         />
-        {isSelected && !isEditing && (
-          <Transformer
-            ref={trRef}
-            rotateEnabled={false}
-            borderStroke={COLORS.selection}
-            borderStrokeWidth={1.5}
-            anchorStroke={COLORS.selection}
-            anchorFill="white"
-            anchorSize={8}
-            anchorCornerRadius={2}
-          />
-        )}
       </Group>
+      {isSingleSelected && !isEditing && (
+        <Transformer
+          ref={trRef}
+          rotateEnabled={false}
+          borderStroke={COLORS.selection}
+          borderStrokeWidth={1.5}
+          anchorStroke={COLORS.selection}
+          anchorFill="white"
+          anchorSize={8}
+          anchorCornerRadius={2}
+          onTransformEnd={() => {
+            const node = groupRef.current;
+            if (!node) return;
+            onTransformEnd(element.id, {
+              x: node.x(),
+              y: node.y(),
+              width: Math.max(60, width * node.scaleX()),
+              height: Math.max(60, height * node.scaleY()),
+            });
+            node.scaleX(1);
+            node.scaleY(1);
+          }}
+        />
+      )}
     </>
   );
 };
