@@ -31,16 +31,96 @@ import {
 } from "./shapes";
 import {
   COLORS,
-  ELEMENT_STROKE_COLORS,
-  ELEMENT_FILL_COLORS,
-  CANVAS_BG_COLORS,
   getStickyNoteStrokeColor,
+  getStrokeColors,
+  getFillColors,
+  getCanvasBgColors,
 } from "../utils/constant";
+import { useTheme } from "../store/useTheme";
 
-// moved constants are imported from ../utils/constant
+// ─── Theme Toggle Button ──────────────────────────────────────────────────────
+function ThemeToggleButton({
+  isDark,
+  onToggle,
+}: {
+  isDark: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+      aria-label={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: "50%",
+        border: isDark
+          ? "1px solid rgba(255,255,255,0.12)"
+          : "1px solid rgba(148,163,184,0.30)",
+        background: isDark ? "rgba(15,18,35,0.88)" : "rgba(255,255,255,0.85)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+        color: isDark ? "#a5b4fc" : "#64748b",
+        boxShadow: isDark
+          ? "0 4px 16px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)"
+          : "0 4px 16px rgba(0,0,0,0.08)",
+        transition: "all 0.25s ease",
+        flexShrink: 0,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "scale(1.1) rotate(15deg)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "scale(1) rotate(0deg)";
+      }}
+    >
+      {isDark ? (
+        // Sun
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="12" cy="12" r="5" />
+          <line x1="12" y1="1" x2="12" y2="3" />
+          <line x1="12" y1="21" x2="12" y2="23" />
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+          <line x1="1" y1="12" x2="3" y2="12" />
+          <line x1="21" y1="12" x2="23" y2="12" />
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+        </svg>
+      ) : (
+        // Moon
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      )}
+    </button>
+  );
+}
 
-// ─── Unified Multi-Select Box ─────────────────────────────────────────────────
-// Renders one dashed bounding box around ALL selected elements + handles group drag
+// ─── Multi-Select Box ─────────────────────────────────────────────────────────
 interface MultiSelectBoxProps {
   elements: WhiteboardElement[];
   selectedIds: string[];
@@ -61,9 +141,8 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
   const groupRef = useRef<Konva.Group>(null);
   const rectRef = useRef<Konva.Rect>(null);
   const trRef = useRef<Konva.Transformer>(null);
-  const PADDING = 16; // increased padding to account for stroke width
+  const PADDING = 16;
 
-  // Compute bounding box of all selected elements
   let minX = Infinity,
     minY = Infinity,
     maxX = -Infinity,
@@ -71,63 +150,37 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
   const selectedEls = elements.filter((el) => selectedIds.includes(el.id));
 
   for (const el of selectedEls) {
-    const strokeWidth = el.strokeWidth || 2;
-    const strokePadding = Math.ceil(strokeWidth / 2) + 2; // account for half stroke + small buffer
-
+    const sp = Math.ceil((el.strokeWidth || 2) / 2) + 2;
     if (el.type === "circle") {
-      const x = el.x ?? 0;
-      const y = el.y ?? 0;
-      const w = el.width ?? 100;
-      const h = el.height ?? 100;
-      const radius = Math.max(w, h) / 2;
-      // Use center-based calculation as safety net
-      const cx = x + radius;
-      const cy = y + radius;
-      minX = Math.min(minX, cx - radius - strokePadding);
-      minY = Math.min(minY, cy - radius - strokePadding);
-      maxX = Math.max(maxX, cx + radius + strokePadding);
-      maxY = Math.max(maxY, cy + radius + strokePadding);
+      const r = Math.max(el.width ?? 100, el.height ?? 100) / 2;
+      const cx = (el.x ?? 0) + r,
+        cy = (el.y ?? 0) + r;
+      minX = Math.min(minX, cx - r - sp);
+      minY = Math.min(minY, cy - r - sp);
+      maxX = Math.max(maxX, cx + r + sp);
+      maxY = Math.max(maxY, cy + r + sp);
     } else if (el.points && el.points.length > 0) {
-      // For elements with points (polygon, arrow, line, pencil)
-      // need to account for stroke width extending beyond points
       for (const p of el.points) {
-        minX = Math.min(minX, p.x - strokePadding);
-        minY = Math.min(minY, p.y - strokePadding);
-        maxX = Math.max(maxX, p.x + strokePadding);
-        maxY = Math.max(maxY, p.y + strokePadding);
+        minX = Math.min(minX, p.x - sp);
+        minY = Math.min(minY, p.y - sp);
+        maxX = Math.max(maxX, p.x + sp);
+        maxY = Math.max(maxY, p.y + sp);
       }
-    } else if (el.type === "text") {
-      // Text: use x, y and estimate dimensions from fontSize and text length
-      const x = el.x ?? 0;
-      const y = el.y ?? 0;
-      // Use actual measured dimensions stored by ResizeObserver, not estimates
-      const w = el.width ?? 100;
-      const h = el.height ?? 40;
-      minX = Math.min(minX, x - strokePadding);
-      minY = Math.min(minY, y - strokePadding);
-      maxX = Math.max(maxX, x + w + strokePadding);
-      maxY = Math.max(maxY, y + h + strokePadding);
     } else {
-      // Default for rectangles, triangles, diamonds, sticky notes
-      const x = el.x ?? 0,
-        y = el.y ?? 0;
-      const w = el.width ?? 60,
-        h = el.height ?? 60;
-      minX = Math.min(minX, x - strokePadding);
-      minY = Math.min(minY, y - strokePadding);
-      maxX = Math.max(maxX, x + w + strokePadding);
-      maxY = Math.max(maxY, y + h + strokePadding);
+      minX = Math.min(minX, (el.x ?? 0) - sp);
+      minY = Math.min(minY, (el.y ?? 0) - sp);
+      maxX = Math.max(maxX, (el.x ?? 0) + (el.width ?? 60) + sp);
+      maxY = Math.max(maxY, (el.y ?? 0) + (el.height ?? 60) + sp);
     }
   }
 
   if (!isFinite(minX)) return null;
 
-  const boxX = minX - PADDING;
-  const boxY = minY - PADDING;
-  const boxW = maxX - minX + PADDING * 2;
-  const boxH = maxY - minY + PADDING * 2;
+  const boxX = minX - PADDING,
+    boxY = minY - PADDING;
+  const boxW = maxX - minX + PADDING * 2,
+    boxH = maxY - minY + PADDING * 2;
 
-  // Attach transformer to rect when there are selected elements
   useEffect(() => {
     if (rectRef.current && trRef.current) {
       trRef.current.nodes([rectRef.current]);
@@ -135,88 +188,38 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
     }
   }, [selectedIds.length]);
 
-  // Handle resizing all selected elements together
   const handleGroupTransformEnd = () => {
     const node = rectRef.current;
     if (!node) return;
-
-    const scaleX = node.scaleX();
-    const scaleY = node.scaleY();
-
-    // Get the original bounding box (before scaling)
-    const origBoxX = boxX;
-    const origBoxY = boxY;
-    const origBoxW = boxW;
-    const origBoxH = boxH;
-
-    // Center of the original bounding box
-    const centerX = origBoxX + origBoxW / 2;
-    const centerY = origBoxY + origBoxH / 2;
-
-    // Update all selected elements with scaled dimensions
+    const scaleX = node.scaleX(),
+      scaleY = node.scaleY();
+    const centerX = boxX + boxW / 2,
+      centerY = boxY + boxH / 2;
     const updateEl = updateElementProp || useStore.getState().updateElement;
     for (const el of selectedEls) {
-      let newAttrs: Partial<WhiteboardElement> = {};
-
-      if (
-        el.type === "circle" ||
-        el.type === "rectangle" ||
-        el.type === "sticky"
-      ) {
-        // Scale width and height
-        const w = el.width ?? 60;
-        const h = el.height ?? 60;
-        newAttrs.width = Math.max(10, w * scaleX);
-        newAttrs.height = Math.max(10, h * scaleY);
-
-        // Scale position relative to center
-        const x = el.x ?? 0;
-        const y = el.y ?? 0;
-        const relX = x - centerX;
-        const relY = y - centerY;
-        newAttrs.x = centerX + relX * scaleX;
-        newAttrs.y = centerY + relY * scaleY;
-      } else if (el.points && el.points.length > 0) {
-        // For point-based shapes, scale each point around center
-        const scaledPoints = el.points.map((p) => ({
+      let attrs: Partial<WhiteboardElement> = {};
+      if (el.points && el.points.length > 0) {
+        attrs.points = el.points.map((p) => ({
           x: centerX + (p.x - centerX) * scaleX,
           y: centerY + (p.y - centerY) * scaleY,
         }));
-        newAttrs.points = scaledPoints;
       } else if (el.type === "text") {
-        // For text, scale position and font size
-        const fontSize = el.fontSize || 28;
-        newAttrs.fontSize = Math.max(10, fontSize * Math.max(scaleX, scaleY));
-
-        const x = el.x ?? 0;
-        const y = el.y ?? 0;
-        const relX = x - centerX;
-        const relY = y - centerY;
-        newAttrs.x = centerX + relX * scaleX;
-        newAttrs.y = centerY + relY * scaleY;
+        attrs.fontSize = Math.max(
+          10,
+          (el.fontSize || 28) * Math.max(scaleX, scaleY),
+        );
+        attrs.x = centerX + ((el.x ?? 0) - centerX) * scaleX;
+        attrs.y = centerY + ((el.y ?? 0) - centerY) * scaleY;
       } else {
-        // For other shapes (triangle, diamond, polygon), scale dims
-        const w = el.width ?? 60;
-        const h = el.height ?? 60;
-        newAttrs.width = Math.max(10, w * scaleX);
-        newAttrs.height = Math.max(10, h * scaleY);
-
-        const x = el.x ?? 0;
-        const y = el.y ?? 0;
-        const relX = x - centerX;
-        const relY = y - centerY;
-        newAttrs.x = centerX + relX * scaleX;
-        newAttrs.y = centerY + relY * scaleY;
+        attrs.width = Math.max(10, (el.width ?? 60) * scaleX);
+        attrs.height = Math.max(10, (el.height ?? 60) * scaleY);
+        attrs.x = centerX + ((el.x ?? 0) - centerX) * scaleX;
+        attrs.y = centerY + ((el.y ?? 0) - centerY) * scaleY;
       }
-
-      updateEl(el.id, newAttrs);
+      updateEl(el.id, attrs);
     }
-
-    // Reset scale
     node.scaleX(1);
     node.scaleY(1);
-
-    // Trigger autosave
     if (onFlush) onFlush();
   };
 
@@ -227,18 +230,10 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
       y={0}
       draggable
       onDragStart={() => {
-        // reset group position each drag start
         groupRef.current?.position({ x: 0, y: 0 });
       }}
-      onDragMove={() => {
-        // keep visual snappy — nothing needed, Konva handles it
-      }}
       onDragEnd={(e) => {
-        const dx = e.target.x();
-        const dy = e.target.y();
-        // move all selected elements
-        onDragAll(dx, dy);
-        // reset group back to origin
+        onDragAll(e.target.x(), e.target.y());
         e.target.x(0);
         e.target.y(0);
       }}
@@ -246,7 +241,6 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
         if (e.target === groupRef.current) onSelect(null);
       }}
     >
-      {/* The unified selection rectangle */}
       <Rect
         ref={rectRef}
         x={boxX}
@@ -261,7 +255,6 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
         cornerRadius={4}
         onTransformEnd={handleGroupTransformEnd}
       />
-      {/* Transformer for resizing grouped elements */}
       <Transformer
         ref={trRef}
         rotateEnabled={false}
@@ -272,17 +265,18 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
         anchorSize={8}
         anchorCornerRadius={2}
       />
-      {/* Corner anchors for visual feedback */}
-      {[
-        [boxX, boxY],
-        [boxX + boxW, boxY],
-        [boxX, boxY + boxH],
-        [boxX + boxW, boxY + boxH],
-      ].map(([cx, cy], i) => (
+      {(
+        [
+          [boxX, boxY],
+          [boxX + boxW, boxY],
+          [boxX, boxY + boxH],
+          [boxX + boxW, boxY + boxH],
+        ] as [number, number][]
+      ).map(([cx, cy], i) => (
         <Rect
           key={i}
-          x={(cx as number) - 4}
-          y={(cy as number) - 4}
+          x={cx - 4}
+          y={cy - 4}
           width={8}
           height={8}
           fill="white"
@@ -296,18 +290,21 @@ const MultiSelectBox: React.FC<MultiSelectBoxProps> = ({
   );
 };
 
-// ─── Bottom-Right Control Panel ──────────────────────────────────────────────
+// ─── Control Panel (bottom-right) ────────────────────────────────────────────
+type BgColor = { color: string; dotColor: string; name: string };
+
 interface ControlPanelProps {
   scale: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetZoom: () => void;
-  canvasBg: (typeof CANVAS_BG_COLORS)[0];
-  onBgChange: (bg: (typeof CANVAS_BG_COLORS)[0]) => void;
+  canvasBg: BgColor;
+  onBgChange: (bg: BgColor) => void;
   strokeColor: string;
-  onStrokeColorChange: (color: string) => void;
+  onStrokeColorChange: (c: string) => void;
   fillColor: string;
-  onFillColorChange: (color: string) => void;
+  onFillColorChange: (c: string) => void;
+  isDark: boolean;
 }
 
 const ControlPanel: React.FC<ControlPanelProps> = ({
@@ -321,7 +318,11 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   onStrokeColorChange,
   fillColor,
   onFillColorChange,
+  isDark,
 }) => {
+  const strokeColors = getStrokeColors(isDark);
+  const fillColors = getFillColors(isDark);
+  const bgColors = getCanvasBgColors(isDark);
   const [activePopup, setActivePopup] = useState<
     "stroke" | "fill" | "bg" | null
   >(null);
@@ -335,49 +336,61 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
     return () => window.removeEventListener("resize", check);
   }, []);
 
+  const panelBg = isDark ? "rgba(15,18,35,0.90)" : "rgba(255,255,255,0.95)";
+  const panelBorder = isDark
+    ? "rgba(255,255,255,0.08)"
+    : "rgba(148,163,184,0.25)";
+  const panelShadow = isDark
+    ? "0 8px 32px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05)"
+    : "0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)";
+  const headColor = isDark ? "#e2e8f0" : "#1e293b";
+  const textColor = isDark ? "rgba(190,205,235,0.75)" : "#64748b";
+  const labelColor = isDark ? "rgba(140,158,200,0.60)" : "#94a3b8";
+  const dividerBg = isDark ? "rgba(255,255,255,0.08)" : "#e2e8f0";
+  const zoomBtnHoverBg = isDark ? "rgba(255,255,255,0.08)" : "#f1f5f9";
+  const zoomBtnHoverColor = isDark ? "#ffffff" : "#1e293b";
+
   const panelStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,0.95)",
+    background: panelBg,
     backdropFilter: "blur(20px)",
     WebkitBackdropFilter: "blur(20px)",
-    border: "1px solid rgba(148,163,184,0.25)",
+    border: `1px solid ${panelBorder}`,
     borderRadius: 16,
-    boxShadow: "0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)",
+    boxShadow: panelShadow,
   };
 
   const togglePopup = (name: "stroke" | "fill" | "bg") => {
-    setActivePopup((prev) => (prev === name ? null : name));
+    setActivePopup((p) => (p === name ? null : name));
   };
 
   useEffect(() => {
     if (!activePopup) return;
-    const handleOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest("[data-color-panel]")) {
+    const handler = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest("[data-color-panel]"))
         setActivePopup(null);
-      }
     };
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, [activePopup]);
 
-  const ColorSwatch = ({
+  const SwatchBtn = ({
     color,
-    isSelected,
+    selected,
     name,
     onClick,
-    isTransparent,
+    transparent,
     isBg,
     bg,
   }: {
     color: string;
-    isSelected: boolean;
+    selected: boolean;
     name: string;
     onClick: () => void;
-    isTransparent?: boolean;
+    transparent?: boolean;
     isBg?: boolean;
-    bg?: (typeof CANVAS_BG_COLORS)[0];
+    bg?: BgColor;
   }) => {
-    const [hovered, setHovered] = useState(false);
+    const [hov, setHov] = useState(false);
     return (
       <div
         style={{
@@ -389,40 +402,36 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
       >
         <button
           onClick={onClick}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
+          onMouseEnter={() => setHov(true)}
+          onMouseLeave={() => setHov(false)}
           style={{
             width: 32,
             height: 32,
             borderRadius: 8,
             background: isBg
               ? `radial-gradient(circle, ${bg!.dotColor} 1.5px, ${bg!.color} 1.5px)`
-              : isTransparent
-                ? "linear-gradient(135deg, #fff 42%, #e2e8f0 42%)"
+              : transparent
+                ? "linear-gradient(135deg,#fff 42%,#e2e8f0 42%)"
                 : color,
             backgroundSize: isBg ? "8px 8px" : undefined,
-            border: isSelected
+            border: selected
               ? "2.5px solid #3b82f6"
-              : hovered
+              : hov
                 ? "2px solid #94a3b8"
                 : "2px solid rgba(0,0,0,0.08)",
             cursor: "pointer",
-            transform: hovered
-              ? "scale(1.15)"
-              : isSelected
-                ? "scale(1.1)"
-                : "scale(1)",
-            transition: "all 0.15s ease",
-            boxShadow: isSelected
-              ? "0 0 0 3px rgba(59,130,246,0.2)"
-              : hovered
-                ? "0 2px 8px rgba(0,0,0,0.15)"
-                : "none",
             outline: "none",
             flexShrink: 0,
+            transform: selected
+              ? "scale(1.1)"
+              : hov
+                ? "scale(1.15)"
+                : "scale(1)",
+            transition: "all 0.15s",
+            boxShadow: selected ? "0 0 0 3px rgba(59,130,246,0.2)" : "none",
           }}
         />
-        <span style={{ fontSize: 9, color: "#94a3b8", whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: 9, color: labelColor, whiteSpace: "nowrap" }}>
           {name}
         </span>
       </div>
@@ -432,11 +441,11 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   const PopupPanel = ({
     title,
     children,
-    columns,
+    cols,
   }: {
     title: string;
     children: React.ReactNode;
-    columns: number;
+    cols: number;
   }) => (
     <div
       data-color-panel
@@ -444,12 +453,14 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
         position: "absolute",
         bottom: "calc(100% + 8px)",
         right: 0,
-        background: "rgba(255,255,255,0.98)",
+        background: isDark ? "rgba(12,16,32,0.97)" : "rgba(255,255,255,0.98)",
         backdropFilter: "blur(20px)",
         WebkitBackdropFilter: "blur(20px)",
-        border: "1px solid rgba(148,163,184,0.25)",
+        border: `1px solid ${panelBorder}`,
         borderRadius: 12,
-        boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+        boxShadow: isDark
+          ? "0 8px 32px rgba(0,0,0,0.6)"
+          : "0 8px 32px rgba(0,0,0,0.12)",
         padding: "10px 12px 12px",
         zIndex: 200,
         minWidth: 180,
@@ -459,7 +470,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
         style={{
           fontSize: 10,
           fontWeight: 600,
-          color: "#64748b",
+          color: labelColor,
           marginBottom: 8,
           letterSpacing: "0.05em",
           textTransform: "uppercase",
@@ -470,7 +481,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: `repeat(${columns}, 1fr)`,
+          gridTemplateColumns: `repeat(${cols},1fr)`,
           gap: 6,
         }}
       >
@@ -479,7 +490,21 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
     </div>
   );
 
-  // ── Desktop layout (unchanged) ──
+  const zBtnStyle: React.CSSProperties = {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+    border: "none",
+    background: "transparent",
+    color: textColor,
+    cursor: "pointer",
+    fontSize: 16,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    transition: "all 0.13s",
+  };
+
   const desktopPanel = (
     <div
       style={{
@@ -499,14 +524,14 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           ...panelStyle,
           padding: "10px 14px",
           fontSize: 11,
-          color: "#64748b",
+          color: textColor,
           minWidth: 190,
         }}
       >
         <div
           style={{
             fontWeight: 700,
-            color: "#1e293b",
+            color: headColor,
             marginBottom: 6,
             fontSize: 12,
           }}
@@ -534,8 +559,15 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
               marginBottom: 2,
             }}
           >
-            <span style={{ fontWeight: 600, color: "#475569" }}>{k}</span>
-            <span style={{ color: "#94a3b8", textAlign: "right" }}>{v}</span>
+            <span
+              style={{
+                fontWeight: 600,
+                color: isDark ? "rgba(190,200,230,0.85)" : "#475569",
+              }}
+            >
+              {k}
+            </span>
+            <span style={{ color: labelColor, textAlign: "right" }}>{v}</span>
           </div>
         ))}
       </div>
@@ -552,7 +584,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           position: "relative",
         }}
       >
-        {/* Stroke */}
+        {/* Stroke swatch */}
         <div
           style={{
             position: "relative",
@@ -563,12 +595,12 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           }}
         >
           {activePopup === "stroke" && (
-            <PopupPanel title="Stroke Color" columns={4}>
-              {ELEMENT_STROKE_COLORS.map((c) => (
-                <ColorSwatch
+            <PopupPanel title="Stroke Color" cols={4}>
+              {strokeColors.map((c) => (
+                <SwatchBtn
                   key={c.color}
                   color={c.color}
-                  isSelected={strokeColor === c.color}
+                  selected={strokeColor === c.color}
                   name={c.name}
                   onClick={() => {
                     onStrokeColorChange(c.color);
@@ -580,30 +612,29 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           )}
           <button
             onClick={() => togglePopup("stroke")}
-            title="Stroke color"
             style={{
               width: 28,
               height: 28,
               borderRadius: 8,
+              cursor: "pointer",
+              display: "block",
+              background: strokeColor,
               border:
                 activePopup === "stroke"
                   ? "2.5px solid #3b82f6"
-                  : "2.5px solid white",
+                  : `2.5px solid ${isDark ? "rgba(255,255,255,0.15)" : "white"}`,
               outline: `2px solid ${strokeColor === "transparent" ? "#cbd5e1" : strokeColor}`,
-              background: strokeColor,
-              cursor: "pointer",
               transition: "all 0.13s",
-              display: "block",
               boxShadow:
                 activePopup === "stroke"
                   ? "0 0 0 3px rgba(59,130,246,0.2)"
                   : "none",
             }}
           />
-          <div style={{ fontSize: 9, color: "#94a3b8" }}>Stroke</div>
+          <div style={{ fontSize: 9, color: labelColor }}>Stroke</div>
         </div>
 
-        {/* Fill */}
+        {/* Fill swatch */}
         <div
           style={{
             position: "relative",
@@ -614,51 +645,50 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           }}
         >
           {activePopup === "fill" && (
-            <PopupPanel title="Fill Color" columns={4}>
-              {ELEMENT_FILL_COLORS.map((c) => (
-                <ColorSwatch
+            <PopupPanel title="Fill Color" cols={4}>
+              {fillColors.map((c) => (
+                <SwatchBtn
                   key={c.color}
                   color={c.color}
-                  isSelected={fillColor === c.color}
+                  selected={fillColor === c.color}
                   name={c.name}
                   onClick={() => {
                     onFillColorChange(c.color);
                     setActivePopup(null);
                   }}
-                  isTransparent={c.color === "transparent"}
+                  transparent={c.color === "transparent"}
                 />
               ))}
             </PopupPanel>
           )}
           <button
             onClick={() => togglePopup("fill")}
-            title="Fill color"
             style={{
               width: 28,
               height: 28,
               borderRadius: 8,
-              border:
-                activePopup === "fill"
-                  ? "2.5px solid #3b82f6"
-                  : "2.5px solid white",
-              outline: "2px solid #cbd5e1",
+              cursor: "pointer",
+              display: "block",
               background:
                 fillColor === "transparent"
                   ? "linear-gradient(135deg,#fff 42%,#e2e8f0 42%)"
                   : fillColor,
-              cursor: "pointer",
+              border:
+                activePopup === "fill"
+                  ? "2.5px solid #3b82f6"
+                  : `2.5px solid ${isDark ? "rgba(255,255,255,0.15)" : "white"}`,
+              outline: "2px solid #cbd5e1",
               transition: "all 0.13s",
-              display: "block",
               boxShadow:
                 activePopup === "fill"
                   ? "0 0 0 3px rgba(59,130,246,0.2)"
                   : "none",
             }}
           />
-          <div style={{ fontSize: 9, color: "#94a3b8" }}>Fill</div>
+          <div style={{ fontSize: 9, color: labelColor }}>Fill</div>
         </div>
 
-        {/* BG */}
+        {/* BG swatch */}
         <div
           style={{
             position: "relative",
@@ -669,12 +699,12 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           }}
         >
           {activePopup === "bg" && (
-            <PopupPanel title="Canvas Background" columns={3}>
-              {CANVAS_BG_COLORS.map((bg) => (
-                <ColorSwatch
+            <PopupPanel title="Canvas Background" cols={3}>
+              {bgColors.map((bg) => (
+                <SwatchBtn
                   key={bg.color}
                   color={bg.color}
-                  isSelected={canvasBg.color === bg.color}
+                  selected={canvasBg.color === bg.color}
                   name={bg.name}
                   onClick={() => {
                     onBgChange(bg);
@@ -688,36 +718,34 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           )}
           <button
             onClick={() => togglePopup("bg")}
-            title="Canvas background"
             style={{
               width: 28,
               height: 28,
               borderRadius: 8,
+              cursor: "pointer",
+              display: "block",
+              backgroundImage: `radial-gradient(circle, ${canvasBg.dotColor} 1.5px, ${canvasBg.color} 1.5px)`,
+              backgroundSize: "7px 7px",
               border:
                 activePopup === "bg"
                   ? "2.5px solid #3b82f6"
-                  : "2.5px solid white",
+                  : `2.5px solid ${isDark ? "rgba(255,255,255,0.15)" : "white"}`,
               outline: "2px solid #cbd5e1",
-              backgroundImage: `radial-gradient(circle, ${canvasBg.dotColor} 1.5px, ${canvasBg.color} 1.5px)`,
-              backgroundSize: "7px 7px",
-              cursor: "pointer",
               transition: "all 0.13s",
-              display: "block",
               boxShadow:
                 activePopup === "bg"
                   ? "0 0 0 3px rgba(59,130,246,0.2)"
                   : "none",
             }}
           />
-          <div style={{ fontSize: 9, color: "#94a3b8" }}>Canvas</div>
+          <div style={{ fontSize: 9, color: labelColor }}>Canvas</div>
         </div>
 
-        {/* divider */}
         <div
           style={{
             width: 1,
             height: 28,
-            background: "#e2e8f0",
+            background: dividerBg,
             margin: "0 2px",
           }}
         />
@@ -725,27 +753,14 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
         {/* Zoom */}
         <button
           onClick={onZoomOut}
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 7,
-            border: "none",
-            background: "transparent",
-            color: "#64748b",
-            cursor: "pointer",
-            fontSize: 16,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            transition: "all 0.13s",
-          }}
+          style={zBtnStyle}
           onMouseOver={(e) => {
-            e.currentTarget.style.background = "#f1f5f9";
-            e.currentTarget.style.color = "#1e293b";
+            e.currentTarget.style.background = zoomBtnHoverBg;
+            e.currentTarget.style.color = zoomBtnHoverColor;
           }}
           onMouseOut={(e) => {
             e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = "#64748b";
+            e.currentTarget.style.color = textColor;
           }}
         >
           −
@@ -758,40 +773,29 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             borderRadius: 7,
             border: "none",
             background: "transparent",
-            color: "#475569",
+            color: textColor,
             cursor: "pointer",
             fontSize: 11,
             fontWeight: 600,
             transition: "all 0.13s",
           }}
-          onMouseOver={(e) => (e.currentTarget.style.background = "#f1f5f9")}
+          onMouseOver={(e) =>
+            (e.currentTarget.style.background = zoomBtnHoverBg)
+          }
           onMouseOut={(e) => (e.currentTarget.style.background = "transparent")}
         >
           {Math.round(scale * 100)}%
         </button>
         <button
           onClick={onZoomIn}
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 7,
-            border: "none",
-            background: "transparent",
-            color: "#64748b",
-            cursor: "pointer",
-            fontSize: 16,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            transition: "all 0.13s",
-          }}
+          style={zBtnStyle}
           onMouseOver={(e) => {
-            e.currentTarget.style.background = "#f1f5f9";
-            e.currentTarget.style.color = "#1e293b";
+            e.currentTarget.style.background = zoomBtnHoverBg;
+            e.currentTarget.style.color = zoomBtnHoverColor;
           }}
           onMouseOut={(e) => {
             e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = "#64748b";
+            e.currentTarget.style.color = textColor;
           }}
         >
           +
@@ -800,25 +804,23 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
     </div>
   );
 
-  // ── Mobile layout ──
   const mobilePanel = (
     <div style={{ position: "fixed", right: 12, bottom: 12, zIndex: 100 }}>
-      {/* Floating action button */}
       <button
         onClick={() => setIsMobileOpen((v) => !v)}
         style={{
           width: 48,
           height: 48,
           borderRadius: "50%",
-          background: isMobileOpen ? "#3b82f6" : "rgba(255,255,255,0.95)",
-          border: "1px solid rgba(148,163,184,0.3)",
+          background: isMobileOpen ? "#3b82f6" : panelBg,
+          border: `1px solid ${panelBorder}`,
           boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           cursor: "pointer",
           fontSize: 20,
-          color: isMobileOpen ? "white" : "#475569",
+          color: isMobileOpen ? "white" : isDark ? "#a5b4fc" : "#475569",
           transition: "all 0.2s",
           backdropFilter: "blur(12px)",
         }}
@@ -827,7 +829,6 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
         {isMobileOpen ? "✕" : "⚙️"}
       </button>
 
-      {/* Slide-up panel */}
       {isMobileOpen && (
         <div
           data-color-panel
@@ -835,23 +836,26 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             position: "absolute",
             bottom: 60,
             right: 0,
-            background: "rgba(255,255,255,0.98)",
+            background: isDark
+              ? "rgba(12,16,32,0.97)"
+              : "rgba(255,255,255,0.98)",
             backdropFilter: "blur(20px)",
             WebkitBackdropFilter: "blur(20px)",
-            border: "1px solid rgba(148,163,184,0.25)",
+            border: `1px solid ${panelBorder}`,
             borderRadius: 16,
-            boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
+            boxShadow: isDark
+              ? "0 8px 32px rgba(0,0,0,0.6)"
+              : "0 8px 32px rgba(0,0,0,0.15)",
             padding: 16,
             minWidth: 240,
             animation: "slideUp 0.2s ease",
           }}
         >
-          <style>{`@keyframes slideUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }`}</style>
-
+          <style>{`@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}`}</style>
           <div
             style={{
               fontWeight: 700,
-              color: "#1e293b",
+              color: headColor,
               marginBottom: 12,
               fontSize: 13,
             }}
@@ -859,13 +863,12 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             Controls
           </div>
 
-          {/* Zoom row */}
           <div style={{ marginBottom: 14 }}>
             <div
               style={{
                 fontSize: 10,
                 fontWeight: 600,
-                color: "#94a3b8",
+                color: labelColor,
                 marginBottom: 6,
                 textTransform: "uppercase",
                 letterSpacing: "0.05em",
@@ -874,145 +877,97 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
               Zoom
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <button
-                onClick={onZoomOut}
+              {(
+                [
+                  ["−", onZoomOut],
+                  [`${Math.round(scale * 100)}%`, onResetZoom],
+                  ["+", onZoomIn],
+                ] as [string, () => void][]
+              ).map(([lbl, fn], i) => (
+                <button
+                  key={i}
+                  onClick={fn}
+                  style={{
+                    flex: i === 1 ? 2 : 1,
+                    height: 36,
+                    borderRadius: 8,
+                    border: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "#e2e8f0"}`,
+                    background: isDark ? "rgba(255,255,255,0.05)" : "#f8fafc",
+                    color: isDark ? "#c8d3f5" : "#475569",
+                    cursor: "pointer",
+                    fontSize: i === 1 ? 13 : 18,
+                    fontWeight: i === 1 ? 600 : 300,
+                  }}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {[
+            {
+              title: "Stroke Color",
+              colors: strokeColors,
+              sel: strokeColor,
+              set: onStrokeColorChange,
+            },
+            {
+              title: "Fill Color",
+              colors: fillColors,
+              sel: fillColor,
+              set: onFillColorChange,
+            },
+          ].map(({ title, colors, sel, set }) => (
+            <div key={title} style={{ marginBottom: 14 }}>
+              <div
                 style={{
-                  flex: 1,
-                  height: 36,
-                  borderRadius: 8,
-                  border: "1px solid #e2e8f0",
-                  background: "#f8fafc",
-                  color: "#475569",
-                  cursor: "pointer",
-                  fontSize: 18,
-                  fontWeight: 300,
-                }}
-              >
-                −
-              </button>
-              <button
-                onClick={onResetZoom}
-                style={{
-                  flex: 2,
-                  height: 36,
-                  borderRadius: 8,
-                  border: "1px solid #e2e8f0",
-                  background: "#f8fafc",
-                  color: "#475569",
-                  cursor: "pointer",
-                  fontSize: 13,
+                  fontSize: 10,
                   fontWeight: 600,
+                  color: labelColor,
+                  marginBottom: 6,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
                 }}
               >
-                {Math.round(scale * 100)}%
-              </button>
-              <button
-                onClick={onZoomIn}
-                style={{
-                  flex: 1,
-                  height: 36,
-                  borderRadius: 8,
-                  border: "1px solid #e2e8f0",
-                  background: "#f8fafc",
-                  color: "#475569",
-                  cursor: "pointer",
-                  fontSize: 18,
-                  fontWeight: 300,
-                }}
-              >
-                +
-              </button>
+                {title}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {colors.map((c: any) => (
+                  <button
+                    key={c.color}
+                    onClick={() => set(c.color)}
+                    title={c.name}
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 7,
+                      background:
+                        c.color === "transparent"
+                          ? "linear-gradient(135deg,#fff 42%,#e2e8f0 42%)"
+                          : c.color,
+                      border:
+                        sel === c.color
+                          ? "3px solid #3b82f6"
+                          : "2px solid rgba(0,0,0,0.1)",
+                      cursor: "pointer",
+                      boxShadow:
+                        sel === c.color
+                          ? "0 0 0 2px rgba(59,130,246,0.3)"
+                          : "none",
+                    }}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-
-          {/* Color rows */}
-          <div style={{ marginBottom: 14 }}>
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 600,
-                color: "#94a3b8",
-                marginBottom: 6,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-              }}
-            >
-              Stroke Color
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {ELEMENT_STROKE_COLORS.map((c) => (
-                <button
-                  key={c.color}
-                  onClick={() => onStrokeColorChange(c.color)}
-                  title={c.name}
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: 7,
-                    background: c.color,
-                    border:
-                      strokeColor === c.color
-                        ? "3px solid #3b82f6"
-                        : "2px solid rgba(0,0,0,0.1)",
-                    cursor: "pointer",
-                    boxShadow:
-                      strokeColor === c.color
-                        ? "0 0 0 2px rgba(59,130,246,0.3)"
-                        : "none",
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 14 }}>
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 600,
-                color: "#94a3b8",
-                marginBottom: 6,
-                textTransform: "uppercase",
-                letterSpacing: "0.05em",
-              }}
-            >
-              Fill Color
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {ELEMENT_FILL_COLORS.map((c) => (
-                <button
-                  key={c.color}
-                  onClick={() => onFillColorChange(c.color)}
-                  title={c.name}
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: 7,
-                    background:
-                      c.color === "transparent"
-                        ? "linear-gradient(135deg,#fff 42%,#e2e8f0 42%)"
-                        : c.color,
-                    border:
-                      fillColor === c.color
-                        ? "3px solid #3b82f6"
-                        : "2px solid rgba(0,0,0,0.1)",
-                    cursor: "pointer",
-                    boxShadow:
-                      fillColor === c.color
-                        ? "0 0 0 2px rgba(59,130,246,0.3)"
-                        : "none",
-                  }}
-                />
-              ))}
-            </div>
-          </div>
+          ))}
 
           <div>
             <div
               style={{
                 fontSize: 10,
                 fontWeight: 600,
-                color: "#94a3b8",
+                color: labelColor,
                 marginBottom: 6,
                 textTransform: "uppercase",
                 letterSpacing: "0.05em",
@@ -1021,7 +976,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
               Canvas Background
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {CANVAS_BG_COLORS.map((bg) => (
+              {bgColors.map((bg) => (
                 <button
                   key={bg.color}
                   onClick={() => onBgChange(bg)}
@@ -1030,7 +985,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                     width: 30,
                     height: 30,
                     borderRadius: 7,
-                    backgroundImage: `radial-gradient(circle, ${bg.dotColor} 1.5px, ${bg.color} 1.5px)`,
+                    backgroundImage: `radial-gradient(circle,${bg.dotColor} 1.5px,${bg.color} 1.5px)`,
                     backgroundSize: "7px 7px",
                     border:
                       canvasBg.color === bg.color
@@ -1054,22 +1009,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   return isMobile ? mobilePanel : desktopPanel;
 };
 
-// ─── Rich Text HTML Overlay Element (Handles Drag & Click) ───────────────────
-interface RichTextOverlayElProps {
-  el: WhiteboardElement;
-  isElSelected: boolean;
-  position: { x: number; y: number };
-  scale: number;
-  selectElement: (id: string | null) => void;
-  updateElement: (id: string, attrs: Partial<WhiteboardElement>) => void;
-  flushChanges: (emitLeave?: boolean) => void;
-  setQuillEditingElementId: (id: string | null) => void;
-  selectedTool: string;
-  isAnyTextEditingRef: React.MutableRefObject<boolean>;
-}
-// ─── Drop-in replacement for the RichTextOverlayEl component in Canvas.tsx ───
-// Fixes: overlay size now matches content → single selection box aligns correctly
-
+// ─── Rich Text Overlay ────────────────────────────────────────────────────────
 interface RichTextOverlayElProps {
   el: WhiteboardElement;
   isElSelected: boolean;
@@ -1080,11 +1020,10 @@ interface RichTextOverlayElProps {
   flushChanges: (emitLeave?: boolean) => void;
   setQuillEditingElementId: (id: string | null) => void;
   isAnyTextEditingRef: React.MutableRefObject<boolean>;
-  lastOverlaySelectTimeRef: React.MutableRefObject<number>; // ← NEW
+  lastOverlaySelectTimeRef: React.MutableRefObject<number>;
   selectedTool: string;
 }
 
-// Updated component:
 const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
   el,
   isElSelected,
@@ -1095,14 +1034,14 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
   flushChanges,
   setQuillEditingElementId,
   isAnyTextEditingRef,
-  lastOverlaySelectTimeRef, // ← NEW
+  lastOverlaySelectTimeRef,
   selectedTool,
 }) => {
-  const lastOverlayClickRef = useRef<number>(0);
+  const lastClickRef = useRef<number>(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const roRef = useRef<ResizeObserver | null>(null);
-  const sizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dragStartRef = useRef<{
+  const sizeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragStart = useRef<{
     clientX: number;
     clientY: number;
     elX: number;
@@ -1115,13 +1054,13 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
     requestAnimationFrame(() => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const canvasW = Math.ceil(rect.width / scale) + 2;
-      const canvasH = Math.ceil(rect.height / scale) + 2;
+      const cw = Math.ceil(rect.width / scale) + 2;
+      const ch = Math.ceil(rect.height / scale) + 2;
       if (
-        Math.abs((el.width ?? 0) - canvasW) > 2 ||
-        Math.abs((el.height ?? 0) - canvasH) > 2
+        Math.abs((el.width ?? 0) - cw) > 2 ||
+        Math.abs((el.height ?? 0) - ch) > 2
       ) {
-        updateElement(el.id, { width: canvasW, height: canvasH });
+        updateElement(el.id, { width: cw, height: ch });
       }
     });
   }, [el.id, el.width, el.height, scale, updateElement]);
@@ -1130,14 +1069,14 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
     const node = containerRef.current;
     if (!node) return;
     roRef.current = new ResizeObserver(() => {
-      if (sizeTimerRef.current) clearTimeout(sizeTimerRef.current);
-      sizeTimerRef.current = setTimeout(syncSize, 60);
+      if (sizeTimer.current) clearTimeout(sizeTimer.current);
+      sizeTimer.current = setTimeout(syncSize, 60);
     });
     roRef.current.observe(node);
     syncSize();
     return () => {
       roRef.current?.disconnect();
-      if (sizeTimerRef.current) clearTimeout(sizeTimerRef.current);
+      if (sizeTimer.current) clearTimeout(sizeTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [el.htmlText]);
@@ -1149,7 +1088,7 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
   const onPointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
-    dragStartRef.current = {
+    dragStart.current = {
       clientX: e.clientX,
       clientY: e.clientY,
       elX: el.x,
@@ -1158,32 +1097,28 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragStartRef.current) return;
-    const dx = (e.clientX - dragStartRef.current.clientX) / scale;
-    const dy = (e.clientY - dragStartRef.current.clientY) / scale;
+    if (!dragStart.current) return;
     updateElement(el.id, {
-      x: dragStartRef.current.elX + dx,
-      y: dragStartRef.current.elY + dy,
+      x:
+        dragStart.current.elX + (e.clientX - dragStart.current.clientX) / scale,
+      y:
+        dragStart.current.elY + (e.clientY - dragStart.current.clientY) / scale,
     });
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
-    if (!dragStartRef.current) return;
+    if (!dragStart.current) return;
     e.currentTarget.releasePointerCapture(e.pointerId);
-    dragStartRef.current = null;
-    // Flush position change immediately after drag so it's saved
+    dragStart.current = null;
     void flushChanges(false);
   };
 
   const onClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     const now = Date.now();
-    const isDouble = now - lastOverlayClickRef.current < 400;
-    lastOverlayClickRef.current = now;
-
-    // ← Stamp the time so finishDraw knows not to deselect
+    const isDouble = now - lastClickRef.current < 400;
+    lastClickRef.current = now;
     lastOverlaySelectTimeRef.current = now;
-
     if (isDouble) {
       selectElement(el.id);
       setQuillEditingElementId(el.id);
@@ -1192,8 +1127,6 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
       selectElement(el.id);
     }
   };
-
-  const screenFontSize = (el.fontSize || 28) * scale;
 
   return (
     <div
@@ -1229,7 +1162,7 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
           margin: 0,
           fontFamily:
             "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-          fontSize: screenFontSize,
+          fontSize: (el.fontSize || 28) * scale,
           lineHeight: 1.4,
           whiteSpace: "pre-wrap",
           wordBreak: "break-word",
@@ -1243,9 +1176,8 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
     </div>
   );
 };
-// let _elementCounter = 0;
-// const newId = (type: string) => `${type}-${Date.now()}-${++_elementCounter}`;
-// ─── Main Canvas ─────────────────────────────────────────────────────────────
+
+// ─── Main Canvas ──────────────────────────────────────────────────────────────
 export default function Canvas({ id }: { id: string }) {
   const {
     elements,
@@ -1263,21 +1195,37 @@ export default function Canvas({ id }: { id: string }) {
     stickyNoteColor,
     elementStrokeColor,
     elementFillColor,
-    setStickyNoteColor,
     setElementStrokeColor,
     setElementFillColor,
     groupSelected,
     ungroupSelected,
   } = useStore();
 
+  // ── Theme ──
+  const { isDark, toggleTheme } = useTheme();
+
+  // ── Refs & state ──
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
   const lastOverlaySelectTimeRef = useRef<number>(0);
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
   const drawStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const finishDrawRef = useRef<() => void>(() => {});
+  const isPanningRef = useRef(false);
+  const lastTouchRef = useRef<{ x: number; y: number } | null>(null);
+  const lastEmitRef = useRef<number>(0);
+  const saveTimerRef = useRef<number | null>(null);
+  const lastSnapshotRef = useRef<Map<string, string>>(new Map());
+  const isTextEditRef = useRef(false);
+  const prevStateRef = useRef<{
+    elements: WhiteboardElement[];
+    historyIndex: number;
+  } | null>(null);
+
   const [isDrawing, setIsDrawing] = useState(false);
-  const [currentElement, setCurrentElement] =
-    useState<Partial<WhiteboardElement> | null>(null);
+  const [currentEl, setCurrentEl] = useState<Partial<WhiteboardElement> | null>(
+    null,
+  );
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDraggingStage, setIsDraggingStage] = useState(false);
@@ -1287,53 +1235,43 @@ export default function Canvas({ id }: { id: string }) {
     width: number;
     height: number;
   } | null>(null);
-  const [canvasBg, setCanvasBg] = useState(CANVAS_BG_COLORS[0]);
-  // Track which text element should open the Quill editor immediately
-  const [quillEditingElementId, setQuillEditingElementId] = useState<
-    string | null
-  >(null);
-  const isAnyTextEditingRef = useRef(false);
-  const isPanningRef = useRef(false);
-  const lastTouchPosRef = useRef<{ x: number; y: number } | null>(null);
-  // Tracks element positions at drag-start for multi-drag
-  const multiDragStartPositionsRef = useRef<
-    Map<string, { x: number; y: number; points?: { x: number; y: number }[] }>
-  >(new Map());
-  const multiDragAnchorRef = useRef<{ x: number; y: number } | null>(null);
-  // --- Autosave state and helpers (declared early so socket handlers can use them)
-  const [autoSaveStatus, setAutoSaveStatus] = React.useState<
+  const [canvasBg, setCanvasBg] = useState<BgColor>(
+    () => getCanvasBgColors(false)[0],
+  );
+
+  // Auto-switch canvas bg default when theme changes
+  const prevIsDarkRef = React.useRef(isDark);
+  useEffect(() => {
+    if (prevIsDarkRef.current !== isDark) {
+      prevIsDarkRef.current = isDark;
+      setCanvasBg(getCanvasBgColors(isDark)[0]);
+    }
+  }, [isDark]);
+  const [quillEditId, setQuillEditId] = useState<string | null>(null);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<
     "idle" | "pending" | "saving" | "saved"
   >("idle");
-  const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
-  const saveTimerRef = useRef<number | null>(null);
-  const lastSentSnapshotRef = useRef<Map<string, string>>(new Map());
   const [roomUsers, setRoomUsers] = useState<
     Array<{ name: string; color: string; socketId: string }>
   >([]);
+  const [remoteCursors, setRemoteCursors] = useState<
+    Map<string, { x: number; y: number; userName: string; color: string }>
+  >(new Map());
   const [toasts, setToasts] = useState<
     Array<{ id: number; message: string; color: string }>
   >([]);
   const [copied, setCopied] = useState(false);
+
   const userName =
     typeof window !== "undefined"
       ? localStorage.getItem("wb_user_name") || "Anonymous"
       : "Anonymous";
-  const prevStateRef = useRef<{
-    elements: WhiteboardElement[];
-    historyIndex: number;
-  } | null>(null);
-  const [remoteCursors, setRemoteCursors] = useState<
-    Map<string, { x: number; y: number; userName: string; color: string }>
-  >(new Map());
-  const lastEmitTimeRef = useRef<number>(0);
 
+  // ── Toasts ──
   const showToast = useCallback((message: string, color: string) => {
     const tid = Date.now();
-    setToasts((prev) => [...prev, { id: tid, message, color }]);
-    setTimeout(
-      () => setToasts((prev) => prev.filter((t) => t.id !== tid)),
-      3500,
-    );
+    setToasts((p) => [...p, { id: tid, message, color }]);
+    setTimeout(() => setToasts((p) => p.filter((t) => t.id !== tid)), 3500);
   }, []);
 
   const handleCopyId = useCallback(() => {
@@ -1343,197 +1281,141 @@ export default function Canvas({ id }: { id: string }) {
     showToast("Room ID copied to clipboard!", "#4f46e5");
   }, [id, showToast]);
 
+  // ── Socket setup ──
   useEffect(() => {
-    // ── 1. Register ALL listeners FIRST, before connect
-    const handleLoad = (data: WhiteboardElement[]) => {
+    const onLoad = (data: WhiteboardElement[]) => {
       const map = new Map<string, WhiteboardElement>();
       for (const item of data) map.set(item.id, item);
-      let deduped = Array.from(map.values());
-
-      // Deduped list is already populated from MongoDB/Redis via 'data'
-
+      const deduped = Array.from(map.values());
       useStore.getState().setElements(deduped);
-      const snapshot = lastSentSnapshotRef.current;
-      snapshot.clear();
-      for (const el of deduped) snapshot.set(el.id, JSON.stringify(el));
+      lastSnapshotRef.current.clear();
+      for (const el of deduped)
+        lastSnapshotRef.current.set(el.id, JSON.stringify(el));
     };
-
-    const handleReceive = (el: WhiteboardElement) => {
-      const state = useStore.getState();
-      const exists = state.elements.find((e) => e.id === el.id);
-      if (exists) state.updateElement(el.id, el);
-      else state.addElement(el);
-      lastSentSnapshotRef.current.set(el.id, JSON.stringify(el));
+    const onReceive = (el: WhiteboardElement) => {
+      const s = useStore.getState();
+      if (s.elements.find((e) => e.id === el.id)) s.updateElement(el.id, el);
+      else s.addElement(el);
+      lastSnapshotRef.current.set(el.id, JSON.stringify(el));
     };
-
-    const handleRemoteDelete = ({ elementId }: { elementId: string }) => {
-      const state = useStore.getState();
-      state.deleteElement(elementId);
-      lastSentSnapshotRef.current.delete(elementId);
+    const onDelete = ({ elementId }: { elementId: string }) => {
+      useStore.getState().deleteElement(elementId);
+      lastSnapshotRef.current.delete(elementId);
     };
-
-    const handleRemoteBatchDelete = ({
-      elementIds,
-    }: {
-      elementIds: string[];
-    }) => {
-      const state = useStore.getState();
-      for (const elementId of elementIds) {
-        state.deleteElement(elementId);
-        lastSentSnapshotRef.current.delete(elementId);
+    const onDeleteBatch = ({ elementIds }: { elementIds: string[] }) => {
+      for (const eid of elementIds) {
+        useStore.getState().deleteElement(eid);
+        lastSnapshotRef.current.delete(eid);
       }
     };
-
-    const handleRoomExpired = () => {
+    const onExpired = () => {
       socket.disconnect();
       window.location.href = "/";
       alert("This room has expired.");
     };
-
-    const handleRoomUsers = (
+    const onRoomUsers = (
       users: Array<{ name: string; color: string; socketId: string }>,
-    ) => {
-      setRoomUsers(users);
+    ) => setRoomUsers(users);
+    const onJoined = (u: { name: string; color: string; socketId: string }) => {
+      setRoomUsers((p) => [...p.filter((x) => x.socketId !== u.socketId), u]);
+      showToast(`${u.name} joined`, u.color);
     };
-
-    const handleUserJoined = (user: {
-      name: string;
-      color: string;
-      socketId: string;
-    }) => {
-      setRoomUsers((prev) => {
-        const filtered = prev.filter((u) => u.socketId !== user.socketId);
-        return [...filtered, user];
-      });
-      showToast(`${user.name} joined`, user.color);
-    };
-
-    const handleUserLeft = ({
-      socketId,
-      name,
-    }: {
-      socketId: string;
-      name: string;
-    }) => {
-      setRoomUsers((prev) => prev.filter((u) => u.socketId !== socketId));
-      setRemoteCursors((prev) => {
-        const next = new Map(prev);
-        next.delete(socketId);
-        return next;
+    const onLeft = ({ socketId, name }: { socketId: string; name: string }) => {
+      setRoomUsers((p) => p.filter((u) => u.socketId !== socketId));
+      setRemoteCursors((p) => {
+        const n = new Map(p);
+        n.delete(socketId);
+        return n;
       });
       showToast(`${name} left`, "#94a3b8");
     };
-
-    const handleCursorMoved = (data: {
+    const onCursor = (d: {
       socketId: string;
       x: number;
       y: number;
       userName: string;
       color: string;
     }) => {
-      setRemoteCursors((prev) => {
-        const next = new Map(prev);
-        next.set(data.socketId, {
-          x: data.x,
-          y: data.y,
-          userName: data.userName,
-          color: data.color,
+      setRemoteCursors((p) => {
+        const n = new Map(p);
+        n.set(d.socketId, {
+          x: d.x,
+          y: d.y,
+          userName: d.userName,
+          color: d.color,
         });
-        return next;
+        return n;
       });
     };
 
-    // ── 2. Register listeners BEFORE connect
-    socket.on("load_canvas", handleLoad);
-    socket.on("receive_draw", handleReceive);
-    socket.on("element_deleted", handleRemoteDelete);
-    socket.on("elements_deleted", handleRemoteBatchDelete);
-    socket.on("room_expired", handleRoomExpired);
-    socket.on("room_users", handleRoomUsers);
-    socket.on("user_joined", handleUserJoined);
-    socket.on("user_left", handleUserLeft);
-    socket.on("cursor_moved", handleCursorMoved);
+    socket.on("load_canvas", onLoad);
+    socket.on("receive_draw", onReceive);
+    socket.on("element_deleted", onDelete);
+    socket.on("elements_deleted", onDeleteBatch);
+    socket.on("room_expired", onExpired);
+    socket.on("room_users", onRoomUsers);
+    socket.on("user_joined", onJoined);
+    socket.on("user_left", onLeft);
+    socket.on("cursor_moved", onCursor);
 
-    // ── 3. NOW connect and join
     socket.connect();
     socket.emit("join_room", id, userName);
-
-    // Save current room to localStorage for re-entry
     localStorage.setItem("wb_last_room_id", id);
-    if (userName !== "Anonymous") {
+    if (userName !== "Anonymous")
       localStorage.setItem("wb_user_name", userName);
-    }
 
     return () => {
-      socket.off("load_canvas", handleLoad);
-      socket.off("receive_draw", handleReceive);
-      socket.off("element_deleted", handleRemoteDelete);
-      socket.off("elements_deleted", handleRemoteBatchDelete);
-      socket.off("room_expired", handleRoomExpired);
-      socket.off("room_users", handleRoomUsers);
-      socket.off("user_joined", handleUserJoined);
-      socket.off("user_left", handleUserLeft);
-      socket.off("cursor_moved", handleCursorMoved);
+      socket.off("load_canvas", onLoad);
+      socket.off("receive_draw", onReceive);
+      socket.off("element_deleted", onDelete);
+      socket.off("elements_deleted", onDeleteBatch);
+      socket.off("room_expired", onExpired);
+      socket.off("room_users", onRoomUsers);
+      socket.off("user_joined", onJoined);
+      socket.off("user_left", onLeft);
+      socket.off("cursor_moved", onCursor);
       socket.disconnect();
     };
   }, [id, userName, showToast]);
 
-  const flushChanges = React.useCallback(
+  // ── Flush changes ──
+  const flushChanges = useCallback(
     async (emitLeave = false) => {
       const state = useStore.getState();
       const changed: WhiteboardElement[] = [];
       const deletedIds: string[] = [];
 
-      // Detect additions / updates
       for (const el of state.elements) {
-        const str = JSON.stringify(el);
-        const prev = lastSentSnapshotRef.current.get(el.id);
-        if (!prev || prev !== str) {
+        const s = JSON.stringify(el);
+        if (lastSnapshotRef.current.get(el.id) !== s) {
           changed.push(el);
-          lastSentSnapshotRef.current.set(el.id, str);
+          lastSnapshotRef.current.set(el.id, s);
         }
       }
-
-      // Detect deletions — any ID in snapshot that's no longer in elements
-      const currentIds = new Set(state.elements.map((e) => e.id));
-      for (const idKey of Array.from(lastSentSnapshotRef.current.keys())) {
-        if (!currentIds.has(idKey)) {
-          deletedIds.push(idKey);
-          lastSentSnapshotRef.current.delete(idKey);
+      const curIds = new Set(state.elements.map((e) => e.id));
+      for (const k of Array.from(lastSnapshotRef.current.keys())) {
+        if (!curIds.has(k)) {
+          deletedIds.push(k);
+          lastSnapshotRef.current.delete(k);
         }
       }
-
       if (changed.length === 0 && deletedIds.length === 0) return;
-
       try {
         setAutoSaveStatus("saving");
-
-        // Emit each changed/added element
-        for (const el of changed) {
+        for (const el of changed)
           socket.emit("draw_element", { roomId: id, element: el });
-        }
-
-        // KEY FIX: emit ONE batch event for ALL deleted IDs instead of
-        // one event per ID. This is handled atomically on the server with
-        // a mutex so no race conditions between concurrent deletes.
-        if (deletedIds.length === 1) {
-          // Single delete — use the original event (backward compat)
+        if (deletedIds.length === 1)
           socket.emit("delete_element", {
             roomId: id,
             elementId: deletedIds[0],
           });
-        } else if (deletedIds.length > 1) {
-          // Multiple deletes — use new batch event
+        else if (deletedIds.length > 1)
           socket.emit("delete_elements", {
             roomId: id,
             elementIds: deletedIds,
           });
-        }
-
         if (emitLeave) socket.emit("leave_room", id);
-
         setAutoSaveStatus("saved");
-        setLastSavedAt(Date.now());
         setTimeout(() => setAutoSaveStatus("idle"), 1200);
       } catch (err) {
         console.error("Autosave failed", err);
@@ -1544,7 +1426,7 @@ export default function Canvas({ id }: { id: string }) {
   );
 
   useEffect(() => {
-    const scheduleFlush = () => {
+    const schedule = () => {
       setAutoSaveStatus("pending");
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = window.setTimeout(() => {
@@ -1552,38 +1434,29 @@ export default function Canvas({ id }: { id: string }) {
         saveTimerRef.current = null;
       }, 400);
     };
-
-    // Two-arg subscribe — fires ONLY when elements array ref changes,
-    // NOT on selection changes (selectedElementId/selectedElementIds are
-    // separate store keys, not part of the elements array).
-    const unsubscribe = useStore.subscribe((state, prev) => {
-      if (state.elements !== prev.elements) {
-        scheduleFlush();
-      }
+    const unsub = useStore.subscribe((state, prev) => {
+      if (state.elements !== prev.elements) schedule();
       prevStateRef.current = {
         elements: state.elements,
         historyIndex: state.historyIndex,
       };
     });
-
-    return unsubscribe;
+    return unsub;
   }, [flushChanges]);
 
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const handler = () => {
       if (saveTimerRef.current) {
         window.clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
-      // localStorage backup removed as Redis/MongoDB handle persistence
       flushChanges(true);
     };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [flushChanges, id]);
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [flushChanges]);
 
-  // Manual save handler (flush immediately and persist)
-  const handleManualSave = React.useCallback(async () => {
+  const handleManualSave = useCallback(async () => {
     if (saveTimerRef.current) {
       window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
@@ -1591,123 +1464,7 @@ export default function Canvas({ id }: { id: string }) {
     await flushChanges(true);
   }, [flushChanges]);
 
-  const handleEditingChange = useCallback((editing: boolean) => {
-    isAnyTextEditingRef.current = editing;
-  }, []);
-
-  const getStatusStyles = () => {
-    switch (autoSaveStatus) {
-      case "pending":
-        return {
-          bgColor: "rgba(253, 242, 233, 0.95)",
-          borderColor: "rgba(253, 195, 126, 0.4)",
-          textColor: "rgba(146, 95, 38, 0.9)",
-          spinnerColor: "rgba(251, 146, 60, 0.8)",
-        };
-      case "saving":
-        return {
-          bgColor: "rgba(225, 242, 254, 0.95)",
-          borderColor: "rgba(147, 197, 253, 0.4)",
-          textColor: "rgba(30, 58, 138, 0.9)",
-          spinnerColor: "rgba(59, 130, 246, 0.8)",
-        };
-      case "saved":
-        return {
-          bgColor: "rgba(236, 253, 245, 0.95)",
-          borderColor: "rgba(134, 239, 172, 0.4)",
-          textColor: "rgba(5, 107, 47, 0.9)",
-          spinnerColor: "rgba(52, 211, 153, 0.8)",
-        };
-      default:
-        return {
-          bgColor: "rgba(241, 245, 249, 0.92)",
-          borderColor: "rgba(203, 213, 225, 0.3)",
-          textColor: "rgba(71, 85, 105, 0.75)",
-          spinnerColor: "rgba(148, 163, 184, 0.7)",
-        };
-    }
-  };
-
-  const styles = getStatusStyles();
-
-  // ── Multi-element drag: when dragging one selected element, move all selected ──
-  const handleMultiDragEnd = useCallback(
-    (draggedId: string, newX: number, newY: number) => {
-      const state = useStore.getState();
-      const allSelected = state.selectedElementIds;
-
-      // If only one element selected, do normal single update
-      if (allSelected.length <= 1) {
-        updateElement(draggedId, { x: newX, y: newY });
-        return;
-      }
-
-      // Find the dragged element to compute delta
-      const draggedEl = state.elements.find((el) => el.id === draggedId);
-      if (!draggedEl) return;
-
-      // For point-based elements, x/y is 0 so use element.x as anchor
-      const oldX = draggedEl.points
-        ? (draggedEl.points[0]?.x ?? draggedEl.x)
-        : draggedEl.x;
-      const oldY = draggedEl.points
-        ? (draggedEl.points[0]?.y ?? draggedEl.y)
-        : draggedEl.y;
-      const dx = draggedEl.points ? newX - oldX : newX - draggedEl.x;
-      const dy = draggedEl.points ? newY - oldY : newY - draggedEl.y;
-
-      // Move all OTHER selected elements by the same delta
-      const otherIds = allSelected.filter((id) => id !== draggedId);
-      updateElements(otherIds, { dx, dy });
-
-      // Update the dragged element itself
-      updateElement(draggedId, { x: newX, y: newY });
-      // flush changes immediately after multi-drag
-      void flushChanges(false);
-    },
-    [updateElement, updateElements, flushChanges],
-  );
-
-  // Handler for unified multi-select box drag (moves all selected elements together)
-  const handleMultiSelectBoxDrag = useCallback(
-    (dx: number, dy: number) => {
-      updateElements(selectedElementIds, { dx, dy });
-      // flush immediately after grouped element movement
-      void flushChanges(false);
-    },
-    [selectedElementIds, updateElements, flushChanges],
-  );
-
-  // ── Get position from pointer or touch ────────────────────────────────────
-  const getPointerPos = useCallback((): { x: number; y: number } => {
-    const stage = stageRef.current;
-    if (!stage) return { x: 0, y: 0 };
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return { x: 0, y: 0 };
-    const stagePos = stage.position();
-    const stageScale = stage.scaleX();
-    return {
-      x: (pointer.x - stagePos.x) / stageScale,
-      y: (pointer.y - stagePos.y) / stageScale,
-    };
-  }, []);
-
-  // ── Get stage-space coords from a touch ──────────────────────────────────
-  const getTouchPos = useCallback((touch: Touch): { x: number; y: number } => {
-    const stage = stageRef.current;
-    if (!stage) return { x: 0, y: 0 };
-    const container = stage.container();
-    const rect = container.getBoundingClientRect();
-    const rawX = touch.clientX - rect.left;
-    const rawY = touch.clientY - rect.top;
-    const stagePos = stage.position();
-    const stageScale = stage.scaleX();
-    return {
-      x: (rawX - stagePos.x) / stageScale,
-      y: (rawY - stagePos.y) / stageScale,
-    };
-  }, []);
-
+  // ── Zoom helpers ──
   const applyZoom = useCallback(
     (newScaleRaw: number) => {
       const stage = stageRef.current;
@@ -1717,19 +1474,19 @@ export default function Canvas({ id }: { id: string }) {
         x: stage.width() / 2,
         y: stage.height() / 2,
       };
-      const oldScale = scale;
-      const mousePointTo = {
-        x: pointer.x / oldScale - stage.x() / oldScale,
-        y: pointer.y / oldScale - stage.y() / oldScale,
+      const old = scale;
+      const mt = {
+        x: pointer.x / old - stage.x() / old,
+        y: pointer.y / old - stage.y() / old,
       };
-      const newPos = {
-        x: -(mousePointTo.x - pointer.x / newScale) * newScale,
-        y: -(mousePointTo.y - pointer.y / newScale) * newScale,
+      const np = {
+        x: -(mt.x - pointer.x / newScale) * newScale,
+        y: -(mt.y - pointer.y / newScale) * newScale,
       };
       setScale(newScale);
-      setPosition(newPos);
+      setPosition(np);
       stage.scale({ x: newScale, y: newScale });
-      stage.position(newPos);
+      stage.position(np);
       stage.batchDraw();
     },
     [scale],
@@ -1753,22 +1510,43 @@ export default function Canvas({ id }: { id: string }) {
     stage.batchDraw();
   }, []);
 
-  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+  // ── Pointer helpers ──
+  const getPointerPos = useCallback((): { x: number; y: number } => {
+    const stage = stageRef.current;
+    if (!stage) return { x: 0, y: 0 };
+    const p = stage.getPointerPosition();
+    if (!p) return { x: 0, y: 0 };
+    const sp = stage.position();
+    const ss = stage.scaleX();
+    return { x: (p.x - sp.x) / ss, y: (p.y - sp.y) / ss };
+  }, []);
+
+  const getTouchPos = useCallback((touch: Touch): { x: number; y: number } => {
+    const stage = stageRef.current;
+    if (!stage) return { x: 0, y: 0 };
+    const rect = stage.container().getBoundingClientRect();
+    const sp = stage.position();
+    const ss = stage.scaleX();
+    return {
+      x: (touch.clientX - rect.left - sp.x) / ss,
+      y: (touch.clientY - rect.top - sp.y) / ss,
+    };
+  }, []);
+
+  // ── Keyboard ──
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent) => {
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
         (e.target instanceof HTMLElement && e.target.isContentEditable)
       )
         return;
-      if (isAnyTextEditingRef.current) return;
-
+      if (isTextEditRef.current) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         const s = useStore.getState();
         if (s.selectedElementIds.length > 0) s.deleteSelected();
         else if (s.selectedElementId) s.deleteElement(s.selectedElementId);
-        // Flush immediately (bypass debounce) so deletion reaches server right away
         if (saveTimerRef.current) {
           window.clearTimeout(saveTimerRef.current);
           saveTimerRef.current = null;
@@ -1789,7 +1567,6 @@ export default function Canvas({ id }: { id: string }) {
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        // save immediately and persist
         handleManualSave();
       }
       if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
@@ -1803,7 +1580,6 @@ export default function Canvas({ id }: { id: string }) {
         e.preventDefault();
         useStore.getState().redo();
       }
-      // Group / Ungroup
       if (
         (e.key === "g" || e.key === "G") &&
         (e.ctrlKey || e.metaKey) &&
@@ -1811,7 +1587,6 @@ export default function Canvas({ id }: { id: string }) {
       ) {
         e.preventDefault();
         useStore.getState().groupSelected();
-        // flush immediately after grouping
         setAutoSaveStatus("pending");
         if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
         saveTimerRef.current = window.setTimeout(() => {
@@ -1826,20 +1601,6 @@ export default function Canvas({ id }: { id: string }) {
       ) {
         e.preventDefault();
         useStore.getState().ungroupSelected();
-        // flush immediately after ungrouping
-        setAutoSaveStatus("pending");
-        if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = window.setTimeout(() => {
-          flushChanges(false);
-          saveTimerRef.current = null;
-        }, 100);
-      } else if (
-        (e.key === "g" || e.key === "G") &&
-        (e.ctrlKey || e.metaKey) &&
-        !e.shiftKey
-      ) {
-        e.preventDefault();
-        useStore.getState().groupSelected();
         setAutoSaveStatus("pending");
         if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
         saveTimerRef.current = window.setTimeout(() => {
@@ -1848,22 +1609,20 @@ export default function Canvas({ id }: { id: string }) {
         }, 100);
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleZoomIn, handleZoomOut, handleResetZoom]);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    handleZoomIn,
+    handleZoomOut,
+    handleResetZoom,
+    handleManualSave,
+    flushChanges,
+  ]);
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // Shared draw-start logic (used by both mouse and touch)
-  // ═══════════════════════════���══════════════════════════════════════════════
-
-  // keep a ref to the latest finishDraw callback so it can be
-  // invoked inside startDraw without needing to list it as a dependency.
-  const finishDrawRef = useRef<() => void>(() => {});
-
+  // ── Draw ──
   const startDraw = useCallback(
     (pos: { x: number; y: number }, isOnStage: boolean) => {
-      if (isAnyTextEditingRef.current) return;
-
+      if (isTextEditRef.current) return;
       drawStartRef.current = pos;
 
       if (selectedTool === "select") {
@@ -1872,9 +1631,8 @@ export default function Canvas({ id }: { id: string }) {
         setIsDrawing(true);
         return;
       }
-
       if (selectedTool === "rectangle") {
-        setCurrentElement({
+        setCurrentEl({
           id: `rect-${Date.now()}`,
           type: "rectangle",
           x: pos.x,
@@ -1887,7 +1645,7 @@ export default function Canvas({ id }: { id: string }) {
         });
         setIsDrawing(true);
       } else if (selectedTool === "circle") {
-        setCurrentElement({
+        setCurrentEl({
           id: `circle-${Date.now()}`,
           type: "circle",
           x: pos.x,
@@ -1900,7 +1658,7 @@ export default function Canvas({ id }: { id: string }) {
         });
         setIsDrawing(true);
       } else if (selectedTool === "line" || selectedTool === "arrow") {
-        setCurrentElement({
+        setCurrentEl({
           id: `line-${Date.now()}`,
           type: selectedTool === "arrow" ? "arrow" : "line",
           x: 0,
@@ -1914,7 +1672,7 @@ export default function Canvas({ id }: { id: string }) {
         });
         setIsDrawing(true);
       } else if (selectedTool === "triangle") {
-        setCurrentElement({
+        setCurrentEl({
           id: `triangle-${Date.now()}`,
           type: "triangle",
           x: pos.x,
@@ -1927,7 +1685,7 @@ export default function Canvas({ id }: { id: string }) {
         });
         setIsDrawing(true);
       } else if (selectedTool === "diamond") {
-        setCurrentElement({
+        setCurrentEl({
           id: `diamond-${Date.now()}`,
           type: "diamond",
           x: pos.x,
@@ -1940,7 +1698,7 @@ export default function Canvas({ id }: { id: string }) {
         });
         setIsDrawing(true);
       } else if (selectedTool === "polygon") {
-        setCurrentElement({
+        setCurrentEl({
           id: `polygon-${Date.now()}`,
           type: "polygon",
           x: pos.x,
@@ -1953,7 +1711,7 @@ export default function Canvas({ id }: { id: string }) {
         } as Partial<WhiteboardElement>);
         setIsDrawing(true);
       } else if (selectedTool === "pencil") {
-        setCurrentElement({
+        setCurrentEl({
           id: `pencil-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           type: "pencil",
           x: 0,
@@ -1976,9 +1734,8 @@ export default function Canvas({ id }: { id: string }) {
         } as WhiteboardElement;
         addElement(newEl);
         selectElement(newEl.id);
-        // Immediately open Quill editor for the new text element
-        setQuillEditingElementId(newEl.id);
-        isAnyTextEditingRef.current = true;
+        setQuillEditId(newEl.id);
+        isTextEditRef.current = true;
         setTool("select");
       } else if (selectedTool === "sticky") {
         if (!isOnStage) return;
@@ -2006,18 +1763,12 @@ export default function Canvas({ id }: { id: string }) {
       elementStrokeColor,
       elementFillColor,
       stickyNoteColor,
-      isDrawing,
-      currentElement,
     ],
   );
-
-  // when drawing with pencil we also update the element in the store so
-  // sections remain joined across mouseup/mousedown
 
   const updateDraw = useCallback(
     (pos: { x: number; y: number }) => {
       const start = drawStartRef.current;
-
       if (selectedTool === "select") {
         setSelectionBox({
           x: Math.min(pos.x, start.x),
@@ -2027,134 +1778,143 @@ export default function Canvas({ id }: { id: string }) {
         });
         return;
       }
-
-      if (!currentElement) return;
-
+      if (!currentEl) return;
       if (
         ["rectangle", "circle", "triangle", "diamond", "polygon"].includes(
           selectedTool,
         )
       ) {
-        setCurrentElement((prev) =>
-          prev
+        setCurrentEl((p) =>
+          p
             ? {
-                ...prev,
+                ...p,
                 x: Math.min(pos.x, start.x),
                 y: Math.min(pos.y, start.y),
                 width: Math.abs(pos.x - start.x),
                 height: Math.abs(pos.y - start.y),
               }
-            : prev,
+            : p,
         );
       } else if (selectedTool === "line" || selectedTool === "arrow") {
-        setCurrentElement((prev) => {
-          if (!prev) return prev;
-          const pts = prev.points ? [...prev.points] : [];
+        setCurrentEl((p) => {
+          if (!p) return p;
+          const pts = p.points ? [...p.points] : [];
           pts[1] = { x: pos.x, y: pos.y };
-          return { ...prev, points: pts };
+          return { ...p, points: pts };
         });
       } else if (selectedTool === "pencil") {
-        setCurrentElement((prev) =>
-          prev
-            ? {
-                ...prev,
-                points: [...(prev.points || []), { x: pos.x, y: pos.y }],
-              }
-            : prev,
+        setCurrentEl((p) =>
+          p
+            ? { ...p, points: [...(p.points || []), { x: pos.x, y: pos.y }] }
+            : p,
         );
       }
     },
-    [selectedTool, currentElement, updateElement],
+    [selectedTool, currentEl],
+  );
+
+  const elementInBox = useCallback(
+    (
+      el: WhiteboardElement,
+      box: { x: number; y: number; width: number; height: number },
+    ): boolean => {
+      const br = box.x + box.width,
+        bb = box.y + box.height;
+      if (el.points && el.points.length > 0) {
+        for (const p of el.points)
+          if (p.x >= box.x && p.x <= br && p.y >= box.y && p.y <= bb)
+            return true;
+        const mnx = Math.min(...el.points.map((p) => p.x)),
+          mxx = Math.max(...el.points.map((p) => p.x));
+        const mny = Math.min(...el.points.map((p) => p.y)),
+          mxy = Math.max(...el.points.map((p) => p.y));
+        return !(br < mnx || box.x > mxx || bb < mny || box.y > mxy);
+      }
+      const er = (el.x || 0) + (el.width || 0),
+        eb = (el.y || 0) + (el.height || 0);
+      return !(
+        br < (el.x || 0) ||
+        box.x > er ||
+        bb < (el.y || 0) ||
+        box.y > eb
+      );
+    },
+    [],
   );
 
   const finishDraw = useCallback(() => {
     if (selectedTool === "select" && selectionBox) {
       if (selectionBox.width > 5 || selectionBox.height > 5) {
-        const selectedIds = elements
-          .filter((el) => elementIntersectsBox(el, selectionBox))
+        const ids = elements
+          .filter((el) => elementInBox(el, selectionBox))
           .map((el) => el.id);
-        if (selectedIds.length > 0) selectElements(selectedIds);
+        if (ids.length > 0) selectElements(ids);
         else selectElement(null);
       } else {
-        // Tiny click — only deselect if we didn't JUST select a text overlay.
-        // The overlay's onClick fires before mouseUp, so if it ran within the
-        // last 300ms we know the user clicked on a text element.
-        const justSelectedOverlay =
-          Date.now() - lastOverlaySelectTimeRef.current < 300;
-        if (!justSelectedOverlay) {
+        if (Date.now() - lastOverlaySelectTimeRef.current >= 300)
           selectElement(null);
-        }
       }
       setSelectionBox(null);
       setIsDrawing(false);
       return;
     }
-
-    if (!isDrawing || !currentElement) return;
-
+    if (!isDrawing || !currentEl) return;
     let addedId: string | null = null;
 
     if (
       ["rectangle", "circle", "triangle", "diamond"].includes(
-        currentElement.type || "",
+        currentEl.type || "",
       )
     ) {
-      if ((currentElement.width || 0) > 5 && (currentElement.height || 0) > 5) {
-        addElement(currentElement as WhiteboardElement);
-        addedId = currentElement.id as string;
-        // Fast autosave: flush this new element to server/Redis immediately
+      if ((currentEl.width || 0) > 5 && (currentEl.height || 0) > 5) {
+        addElement(currentEl as WhiteboardElement);
+        addedId = currentEl.id as string;
         void flushChanges(false);
       }
-    } else if (
-      ["line", "arrow", "pencil"].includes(currentElement.type || "")
-    ) {
-      addElement(currentElement as WhiteboardElement);
-      addedId = currentElement.id as string;
-      // Fast autosave for strokes/lines
+    } else if (["line", "arrow", "pencil"].includes(currentEl.type || "")) {
+      addElement(currentEl as WhiteboardElement);
+      addedId = currentEl.id as string;
       void flushChanges(false);
-    } else if (currentElement.type === "polygon") {
-      const sides = (currentElement as any).sides || 6;
-      const w = currentElement.width || 0,
-        h = currentElement.height || 0;
-      const cx = (currentElement.x || 0) + w / 2,
-        cy = (currentElement.y || 0) + h / 2,
+    } else if (currentEl.type === "polygon") {
+      const sides = (currentEl as any).sides || 6;
+      const w = currentEl.width || 0,
+        h = currentEl.height || 0;
+      const cx = (currentEl.x || 0) + w / 2,
+        cy = (currentEl.y || 0) + h / 2,
         r = Math.min(w, h) / 2;
-      const points = Array.from({ length: sides }).map((_, i) => {
-        const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
-        return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
+      const pts = Array.from({ length: sides }).map((_, i) => {
+        const a = (i / sides) * Math.PI * 2 - Math.PI / 2;
+        return { x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r };
       });
-      // Store minX/minY as el.x/el.y so it's always consistent with points
-      const pMinX = Math.min(...points.map((p) => p.x));
-      const pMinY = Math.min(...points.map((p) => p.y));
-      const pMaxX = Math.max(...points.map((p) => p.x));
-      const pMaxY = Math.max(...points.map((p) => p.y));
+      const mnx = Math.min(...pts.map((p) => p.x)),
+        mny = Math.min(...pts.map((p) => p.y));
+      const mxx = Math.max(...pts.map((p) => p.x)),
+        mxy = Math.max(...pts.map((p) => p.y));
       const el = {
-        id: currentElement.id as string,
+        id: currentEl.id as string,
         type: "polygon",
-        x: pMinX, // ← consistent with PolygonShape renderer
-        y: pMinY, // ← consistent with PolygonShape renderer
-        width: pMaxX - pMinX, // ← store actual width
-        height: pMaxY - pMinY, // ← store actual height
-        points,
-        strokeColor: currentElement.strokeColor,
-        fillColor: currentElement.fillColor,
-        strokeWidth: currentElement.strokeWidth,
+        x: mnx,
+        y: mny,
+        width: mxx - mnx,
+        height: mxy - mny,
+        points: pts,
+        strokeColor: currentEl.strokeColor,
+        fillColor: currentEl.fillColor,
+        strokeWidth: currentEl.strokeWidth,
       } as WhiteboardElement;
       addElement(el);
       addedId = el.id;
     }
 
-    // Auto-select and switch to select tool — but NOT for pencil (stay in pencil mode)
-    if (addedId && currentElement?.type !== "pencil") {
+    if (addedId && currentEl?.type !== "pencil") {
       selectElement(addedId);
       setTool("select");
     }
-
     setIsDrawing(false);
-    setCurrentElement(null);
+    setCurrentEl(null);
   }, [
     isDrawing,
-    currentElement,
+    currentEl,
     selectedTool,
     selectionBox,
     elements,
@@ -2162,68 +1922,59 @@ export default function Canvas({ id }: { id: string }) {
     selectElements,
     addElement,
     setTool,
+    elementInBox,
+    flushChanges,
   ]);
 
-  // keep ref updated so startDraw can call latest finishDraw
   useEffect(() => {
     finishDrawRef.current = finishDraw;
   }, [finishDraw]);
 
-  const elementIntersectsBox = useCallback(
-    (
-      element: WhiteboardElement,
-      box: { x: number; y: number; width: number; height: number },
-    ): boolean => {
-      const boxRight = box.x + box.width,
-        boxBottom = box.y + box.height;
-      if (element.points && element.points.length > 0) {
-        for (const point of element.points) {
-          if (
-            point.x >= box.x &&
-            point.x <= boxRight &&
-            point.y >= box.y &&
-            point.y <= boxBottom
-          )
-            return true;
-        }
-        const minX = Math.min(...element.points.map((p) => p.x)),
-          maxX = Math.max(...element.points.map((p) => p.x));
-        const minY = Math.min(...element.points.map((p) => p.y)),
-          maxY = Math.max(...element.points.map((p) => p.y));
-        return !(
-          boxRight < minX ||
-          box.x > maxX ||
-          boxBottom < minY ||
-          box.y > maxY
-        );
+  // ── Multi-drag ──
+  const handleMultiDragEnd = useCallback(
+    (draggedId: string, newX: number, newY: number) => {
+      const s = useStore.getState();
+      if (s.selectedElementIds.length <= 1) {
+        updateElement(draggedId, { x: newX, y: newY });
+        return;
       }
-      const elRight = (element.x || 0) + (element.width || 0),
-        elBottom = (element.y || 0) + (element.height || 0);
-      return !(
-        boxRight < (element.x || 0) ||
-        box.x > elRight ||
-        boxBottom < (element.y || 0) ||
-        box.y > elBottom
+      const dragged = s.elements.find((el) => el.id === draggedId);
+      if (!dragged) return;
+      const dx = dragged.points
+        ? newX - (dragged.points[0]?.x ?? dragged.x)
+        : newX - dragged.x;
+      const dy = dragged.points
+        ? newY - (dragged.points[0]?.y ?? dragged.y)
+        : newY - dragged.y;
+      updateElements(
+        s.selectedElementIds.filter((i) => i !== draggedId),
+        { dx, dy },
       );
+      updateElement(draggedId, { x: newX, y: newY });
+      void flushChanges(false);
     },
-    [],
+    [updateElement, updateElements, flushChanges],
   );
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // MOUSE events (desktop)
-  // ══════════════════════════════════════════════════════════════════════════
+  const handleMultiBoxDrag = useCallback(
+    (dx: number, dy: number) => {
+      updateElements(selectedElementIds, { dx, dy });
+      void flushChanges(false);
+    },
+    [selectedElementIds, updateElements, flushChanges],
+  );
+
+  // ── Mouse events ──
   const handleMouseDown = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
-      if (isAnyTextEditingRef.current) return;
+      if (isTextEditRef.current) return;
       if (e.evt.ctrlKey || e.evt.metaKey) {
         setIsDraggingStage(true);
         lastPosRef.current = stageRef.current?.getPointerPosition() ?? null;
         e.evt.preventDefault();
         return;
       }
-      const isOnStage = e.target === e.target.getStage();
-      const pos = getPointerPos();
-      startDraw(pos, isOnStage);
+      startDraw(getPointerPos(), e.target === e.target.getStage());
     },
     [getPointerPos, startDraw],
   );
@@ -2231,10 +1982,8 @@ export default function Canvas({ id }: { id: string }) {
   const handleMouseMove = useCallback(
     (e: Konva.KonvaEventObject<MouseEvent>) => {
       const pos = getPointerPos();
-
-      // Broadcast cursor position (throttled to ~30ms)
       const now = Date.now();
-      if (now - lastEmitTimeRef.current > 30) {
+      if (now - lastEmitRef.current > 30) {
         const me = roomUsers.find((u) => u.socketId === socket.id);
         if (me) {
           socket.emit("cursor_move", {
@@ -2244,27 +1993,25 @@ export default function Canvas({ id }: { id: string }) {
             userName: me.name,
             color: me.color,
           });
-          lastEmitTimeRef.current = now;
+          lastEmitRef.current = now;
         }
       }
-
       if (isDraggingStage && (e.evt.ctrlKey || e.evt.metaKey)) {
         const stage = stageRef.current;
         if (!stage) return;
-        const pointerPos = stage.getPointerPosition();
-        if (!pointerPos) return;
-        const lastPos = lastPosRef.current ?? pointerPos;
-        const newPos = {
-          x: position.x + (pointerPos.x - lastPos.x),
-          y: position.y + (pointerPos.y - lastPos.y),
+        const pp = stage.getPointerPosition();
+        if (!pp) return;
+        const lp = lastPosRef.current ?? pp;
+        const np = {
+          x: position.x + (pp.x - lp.x),
+          y: position.y + (pp.y - lp.y),
         };
-        setPosition(newPos);
-        stage.position(newPos);
+        setPosition(np);
+        stage.position(np);
         stage.batchDraw();
-        lastPosRef.current = pointerPos;
+        lastPosRef.current = pp;
         return;
       }
-
       if (!isDrawing) return;
       updateDraw(pos);
     },
@@ -2274,10 +2021,6 @@ export default function Canvas({ id }: { id: string }) {
       getPointerPos,
       updateDraw,
       position,
-      selectedTool,
-      currentElement,
-      finishDraw,
-      startDraw,
       roomUsers,
       id,
     ],
@@ -2292,72 +2035,49 @@ export default function Canvas({ id }: { id: string }) {
     finishDraw();
   }, [isDraggingStage, finishDraw]);
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // TOUCH events (mobile) — attached to the stage container via useEffect
-  // ══════════════════════════════════════════════════════════════════════════
+  // ── Touch events ──
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
     const container = stage.container();
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (isAnyTextEditingRef.current) return;
-
-      // Two-finger = pan
+    const onStart = (e: TouchEvent) => {
+      if (isTextEditRef.current) return;
       if (e.touches.length === 2) {
         isPanningRef.current = true;
         return;
       }
-
-      const touch = e.touches[0];
-      const pos = getTouchPos(touch);
-
-      // Store for panning reference
-      lastTouchPosRef.current = { x: touch.clientX, y: touch.clientY };
-
-      // Determine if touch is on a Konva shape by checking what's under the finger
-      // We do a simple hittest: use Konva's getIntersection
-      const stagePos = stage.position();
-      const stageScale = stage.scaleX();
-      const container2 = stage.container().getBoundingClientRect();
-      const rawX = touch.clientX - container2.left;
-      const rawY = touch.clientY - container2.top;
+      const t = e.touches[0];
+      lastTouchRef.current = { x: t.clientX, y: t.clientY };
+      const rect = stage.container().getBoundingClientRect();
       const hit = stage.getIntersection({
-        x: rawX,
-        y: rawY,
+        x: t.clientX - rect.left,
+        y: t.clientY - rect.top,
       }) as Konva.Node | null;
-      const isOnStage = !hit || hit === stage;
-
-      startDraw(pos, isOnStage);
+      startDraw(getTouchPos(t), !hit || hit === stage);
     };
-
-    const onTouchMove = (e: TouchEvent) => {
-      e.preventDefault(); // prevent scroll while drawing
-
+    const onMove = (e: TouchEvent) => {
+      e.preventDefault();
       if (e.touches.length === 2 && isPanningRef.current) {
-        // Two-finger pan
-        const t1 = e.touches[0];
-        const t2 = e.touches[1];
-        const midX = (t1.clientX + t2.clientX) / 2;
-        const midY = (t1.clientY + t2.clientY) / 2;
-        if (lastTouchPosRef.current) {
-          const dx = midX - lastTouchPosRef.current.x;
-          const dy = midY - lastTouchPosRef.current.y;
-          const newPos = { x: stage.x() + dx, y: stage.y() + dy };
-          setPosition(newPos);
-          stage.position(newPos);
+        const t1 = e.touches[0],
+          t2 = e.touches[1];
+        const mx = (t1.clientX + t2.clientX) / 2,
+          my = (t1.clientY + t2.clientY) / 2;
+        if (lastTouchRef.current) {
+          const np = {
+            x: stage.x() + (mx - lastTouchRef.current.x),
+            y: stage.y() + (my - lastTouchRef.current.y),
+          };
+          setPosition(np);
+          stage.position(np);
           stage.batchDraw();
         }
-        lastTouchPosRef.current = { x: midX, y: midY };
+        lastTouchRef.current = { x: mx, y: my };
         return;
       }
-
-      const touch = e.touches[0];
-      const pos = getTouchPos(touch);
-
-      // Broadcast cursor position (throttled to ~30ms)
+      const t = e.touches[0];
+      const pos = getTouchPos(t);
       const now = Date.now();
-      if (now - lastEmitTimeRef.current > 30) {
+      if (now - lastEmitRef.current > 30) {
         const me = roomUsers.find((u) => u.socketId === socket.id);
         if (me) {
           socket.emit("cursor_move", {
@@ -2367,48 +2087,97 @@ export default function Canvas({ id }: { id: string }) {
             userName: me.name,
             color: me.color,
           });
-          lastEmitTimeRef.current = now;
+          lastEmitRef.current = now;
         }
       }
       updateDraw(pos);
     };
-
-    const onTouchEnd = (e: TouchEvent) => {
+    const onEnd = (e: TouchEvent) => {
       if (isPanningRef.current && e.touches.length < 2) {
         isPanningRef.current = false;
-        lastTouchPosRef.current = null;
+        lastTouchRef.current = null;
         return;
       }
       finishDraw();
-      lastTouchPosRef.current = null;
+      lastTouchRef.current = null;
     };
-
-    container.addEventListener("touchstart", onTouchStart, { passive: false });
-    container.addEventListener("touchmove", onTouchMove, { passive: false });
-    container.addEventListener("touchend", onTouchEnd, { passive: false });
-
+    container.addEventListener("touchstart", onStart, { passive: false });
+    container.addEventListener("touchmove", onMove, { passive: false });
+    container.addEventListener("touchend", onEnd, { passive: false });
     return () => {
-      container.removeEventListener("touchstart", onTouchStart);
-      container.removeEventListener("touchmove", onTouchMove);
-      container.removeEventListener("touchend", onTouchEnd);
+      container.removeEventListener("touchstart", onStart);
+      container.removeEventListener("touchmove", onMove);
+      container.removeEventListener("touchend", onEnd);
     };
-  }, [getTouchPos, startDraw, updateDraw, finishDraw, isDrawing]);
+  }, [getTouchPos, startDraw, updateDraw, finishDraw, roomUsers, id]);
 
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
       e.evt.preventDefault();
-      const direction = e.evt.deltaY > 0 ? -1 : 1;
-      applyZoom(scale + direction * 0.1);
+      applyZoom(scale + (e.evt.deltaY > 0 ? -1 : 1) * 0.1);
     },
     [scale, applyZoom],
   );
+
+  // ── Status badge colours ──
+  const statusStyles = (() => {
+    switch (autoSaveStatus) {
+      case "pending":
+        return {
+          bg: isDark ? "rgba(60,40,10,0.88)" : "rgba(253,242,233,0.95)",
+          border: isDark ? "rgba(180,100,20,0.3)" : "rgba(253,195,126,0.4)",
+          text: isDark ? "rgba(255,185,80,0.9)" : "rgba(146,95,38,0.9)",
+          spin: isDark ? "rgba(255,160,50,0.8)" : "rgba(251,146,60,0.8)",
+        };
+      case "saving":
+        return {
+          bg: isDark ? "rgba(10,30,60,0.88)" : "rgba(225,242,254,0.95)",
+          border: isDark ? "rgba(60,100,200,0.3)" : "rgba(147,197,253,0.4)",
+          text: isDark ? "rgba(120,180,255,0.9)" : "rgba(30,58,138,0.9)",
+          spin: isDark ? "rgba(80,140,255,0.8)" : "rgba(59,130,246,0.8)",
+        };
+      case "saved":
+        return {
+          bg: isDark ? "rgba(5,35,20,0.88)" : "rgba(236,253,245,0.95)",
+          border: isDark ? "rgba(30,150,80,0.3)" : "rgba(134,239,172,0.4)",
+          text: isDark ? "rgba(80,220,130,0.9)" : "rgba(5,107,47,0.9)",
+          spin: isDark ? "rgba(60,200,110,0.8)" : "rgba(52,211,153,0.8)",
+        };
+      default:
+        return {
+          bg: isDark ? "rgba(15,20,40,0.80)" : "rgba(241,245,249,0.92)",
+          border: isDark ? "rgba(255,255,255,0.07)" : "rgba(203,213,225,0.3)",
+          text: isDark ? "rgba(140,155,200,0.75)" : "rgba(71,85,105,0.75)",
+          spin: isDark ? "rgba(100,120,180,0.7)" : "rgba(148,163,184,0.7)",
+        };
+    }
+  })();
+
+  // ── Glass panel helper ──
+  const glassBg = isDark ? "rgba(15,18,35,0.82)" : "rgba(255,255,255,0.70)";
+  const glassBorder = isDark
+    ? "rgba(255,255,255,0.08)"
+    : "rgba(255,255,255,0.4)";
+  const glassShadow = isDark
+    ? "0 4px 16px rgba(0,0,0,0.50)"
+    : "0 4px 16px rgba(0,0,0,0.08)";
+  const glassBdrTop = isDark
+    ? "rgba(255,255,255,0.12)"
+    : "rgba(255,255,255,0.9)";
+  const textPrimary = isDark ? "#e2e8f0" : "#334155";
+  const textMuted = isDark ? "rgba(140,158,200,0.60)" : "#94a3b8";
+
+  // Canvas dot bg
+  // canvasBg already switches on theme toggle — just use it directly
+  const dotBgColor = canvasBg.color;
+  const dotColor = canvasBg.dotColor;
 
   const stageWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
   const stageHeight = typeof window !== "undefined" ? window.innerHeight : 800;
 
   return (
     <>
-      <Toolbar />
+      <Toolbar isDark={isDark} />
       <div
         style={{
           width: "100vw",
@@ -2417,10 +2186,9 @@ export default function Canvas({ id }: { id: string }) {
           position: "relative",
         }}
       >
-        {/* Save controls */}
-
-        {/* ── Top-Center: User Status ── */}
+        {/* ── Top-center user status ── */}
         <div
+          className="top-center-status"
           style={{
             position: "fixed",
             top: 20,
@@ -2430,17 +2198,18 @@ export default function Canvas({ id }: { id: string }) {
             display: "flex",
             alignItems: "center",
             gap: 12,
-            background: "rgba(255, 255, 255, 0.7)",
+            background: glassBg,
             backdropFilter: "blur(12px) saturate(160%)",
             WebkitBackdropFilter: "blur(12px) saturate(160%)",
             padding: "6px 18px",
             borderRadius: "50px",
-            border: "1px solid rgba(255, 255, 255, 0.4)",
-            boxShadow: "0 4px 16px rgba(0, 0, 0, 0.08)",
+            border: `1px solid ${glassBorder}`,
+            borderTopColor: glassBdrTop,
+            boxShadow: glassShadow,
+            transition: "background 0.3s, border-color 0.3s",
           }}
-          className="top-center-status"
         >
-          <div style={{ display: "flex", alignItems: "center", gap: -8 }}>
+          <div style={{ display: "flex", alignItems: "center" }}>
             {roomUsers.slice(0, 3).map((u, i) => {
               const isMe = u.name === userName;
               return (
@@ -2453,15 +2222,13 @@ export default function Canvas({ id }: { id: string }) {
                     zIndex: 10 - i,
                   }}
                 >
-                  {/* Pinging ring for active presence */}
                   <div
                     style={{
                       position: "absolute",
                       inset: -2,
                       borderRadius: "50%",
                       border: `2px solid ${u.color}`,
-                      animation:
-                        "pingRing 2s cubic-bezier(0, 0, 0.2, 1) infinite",
+                      animation: "pingRing 2s cubic-bezier(0,0,0.2,1) infinite",
                       opacity: 0,
                       pointerEvents: "none",
                     }}
@@ -2474,17 +2241,15 @@ export default function Canvas({ id }: { id: string }) {
                       background: u.color,
                       border: isMe
                         ? "2.5px solid #a78bfa"
-                        : "2.5px solid white",
+                        : `2.5px solid ${isDark ? "rgba(255,255,255,0.15)" : "white"}`,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       color: "white",
                       fontWeight: 800,
                       fontSize: 10,
-                      boxShadow: isMe
-                        ? "0 0 12px rgba(167, 139, 250, 0.4), 0 2px 6px rgba(0,0,0,0.12)"
-                        : "0 2px 6px rgba(0,0,0,0.12)",
-                      transition: "transform 0.2s ease",
+                      boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+                      transition: "transform 0.2s",
                       transform: isMe ? "scale(1.1)" : "scale(1)",
                     }}
                     onMouseEnter={(e) =>
@@ -2508,17 +2273,16 @@ export default function Canvas({ id }: { id: string }) {
                   width: 28,
                   height: 28,
                   borderRadius: "50%",
-                  background: "#f8fafc",
-                  border: "2.5px solid white",
+                  background: isDark ? "rgba(255,255,255,0.08)" : "#f8fafc",
+                  border: `2.5px solid ${isDark ? "rgba(255,255,255,0.12)" : "white"}`,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "#64748b",
+                  color: isDark ? "#a5b4fc" : "#64748b",
                   fontWeight: 800,
                   fontSize: 10,
                   marginLeft: -12,
                   zIndex: 0,
-                  boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
                 }}
               >
                 +{roomUsers.length - 3}
@@ -2529,301 +2293,284 @@ export default function Canvas({ id }: { id: string }) {
             style={{
               fontSize: 12,
               fontWeight: 700,
-              color: "#334155",
+              color: textPrimary,
               letterSpacing: "0.3px",
-              fontFamily:
-                "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
             }}
           >
             {roomUsers.length} online
           </span>
         </div>
 
-        {/* ── Top-Right: Actions ── */}
-        {/* ── Top-Right: Actions ── */}
+        {/* ── Top-right actions ── */}
         <div
+          className="top-right-actions"
           style={{
             position: "fixed",
             right: 20,
             top: 20,
             zIndex: 60,
             display: "flex",
-            gap: 12,
+            gap: 10,
             alignItems: "center",
           }}
-          className="top-right-actions"
         >
+          {/* Theme toggle */}
+          <ThemeToggleButton isDark={isDark} onToggle={toggleTheme} />
+
+          {/* Room ID */}
           <div
-            style={{ display: "flex", gap: 12, alignItems: "center" }}
-            className="actions-wrapper"
+            onClick={handleCopyId}
+            className="room-id-box"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "6px 12px",
+              background: glassBg,
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              borderRadius: "14px",
+              border: `1px solid ${glassBorder}`,
+              borderTopColor: glassBdrTop,
+              boxShadow: glassShadow,
+              cursor: "pointer",
+              transition: "all 0.2s",
+              transform: copied ? "scale(0.96)" : "scale(1)",
+              position: "relative",
+            }}
           >
-            {/* Room ID Copy Box */}
-            <div
-              onClick={handleCopyId}
-              className="room-id-box"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "6px 12px",
-                background: "rgba(255, 255, 255, 0.85)",
-                backdropFilter: "blur(12px) saturate(180%)",
-                WebkitBackdropFilter: "blur(12px) saturate(180%)",
-                borderRadius: "14px",
-                border: "1px solid rgba(255, 255, 255, 0.6)",
-                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.06)",
-                cursor: "pointer",
-                transition: "all 0.2s ease",
-                transform: copied ? "scale(0.96)" : "scale(1)",
-                position: "relative",
-              }}
-            >
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <div
-                  style={{ display: "flex", alignItems: "baseline", gap: 4 }}
-                >
-                  <span
-                    className="room-id-label"
-                    style={{
-                      fontSize: 8,
-                      fontWeight: 800,
-                      color: "#94a3b8",
-                      textTransform: "uppercase",
-                      letterSpacing: "1px",
-                      lineHeight: 1,
-                      marginBottom: 1,
-                    }}
-                  >
-                    Room
-                  </span>
-                  <span
-                    className="share-label"
-                    style={{
-                      fontSize: 8,
-                      fontWeight: 800,
-                      color: "#a78bfa",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.5px",
-                      lineHeight: 1,
-                    }}
-                  >
-                    • SHARE
-                  </span>
-                  <span
-                    className="mobile-share-text"
-                    style={{
-                      display: "none",
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: "#64748b",
-                      letterSpacing: "0.2px",
-                    }}
-                  >
-                    share id
-                  </span>
-                </div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
                 <span
-                  className="room-id-value"
+                  className="room-id-label"
                   style={{
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "#1e293b",
-                    fontFamily: "monospace",
+                    fontSize: 8,
+                    fontWeight: 800,
+                    color: textMuted,
+                    textTransform: "uppercase",
+                    letterSpacing: "1px",
                     lineHeight: 1,
-                    letterSpacing: "-0.2px",
                   }}
                 >
-                  {id.slice(0, 4)}...{id.slice(-4)}
+                  Room
+                </span>
+                <span
+                  className="share-label"
+                  style={{
+                    fontSize: 8,
+                    fontWeight: 800,
+                    color: "#a78bfa",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    lineHeight: 1,
+                  }}
+                >
+                  • SHARE
+                </span>
+                <span
+                  className="mobile-share-text"
+                  style={{
+                    display: "none",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: textPrimary,
+                  }}
+                >
+                  share id
                 </span>
               </div>
-
-              <div
+              <span
+                className="room-id-value"
                 style={{
-                  width: 26,
-                  height: 26,
-                  borderRadius: "8px",
-                  background: copied ? "#10b981" : "#f1f5f9",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: copied ? "white" : "#64748b",
-                  transition:
-                    "all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: textPrimary,
+                  fontFamily: "monospace",
+                  lineHeight: 1,
                 }}
               >
+                {id.slice(0, 4)}...{id.slice(-4)}
+              </span>
+            </div>
+            <div
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 8,
+                background: copied
+                  ? "#10b981"
+                  : isDark
+                    ? "rgba(255,255,255,0.08)"
+                    : "#f1f5f9",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: copied ? "white" : isDark ? "#a5b4fc" : "#64748b",
+                transition: "all 0.4s",
+              }}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={{ width: 13, height: 13 }}
+              >
+                {copied ? (
+                  <polyline points="20 6 9 17 4 12" />
+                ) : (
+                  <>
+                    <rect x="9" y="9" width="13" height="13" rx="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </>
+                )}
+              </svg>
+            </div>
+            {copied && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "-32px",
+                  right: 0,
+                  background: "#0f172a",
+                  color: "white",
+                  padding: "5px 10px",
+                  borderRadius: "50px",
+                  fontSize: 9,
+                  fontWeight: 700,
+                  animation: "slideUpToast 0.3s ease both",
+                  pointerEvents: "none",
+                  zIndex: 100,
+                }}
+              >
+                Copied!
+              </div>
+            )}
+          </div>
+
+          {/* Save & status */}
+          <div
+            className="save-status-group"
+            style={{ display: "flex", gap: 10, alignItems: "center" }}
+          >
+            <button
+              onClick={handleManualSave}
+              className="save-button"
+              style={{
+                background: isDark
+                  ? "linear-gradient(135deg,rgba(30,35,60,0.9),rgba(20,25,50,0.9))"
+                  : "linear-gradient(135deg,#f8fafc,#f1f5f9)",
+                color: isDark ? "#c4b5fd" : "#334155",
+                padding: "10px 20px",
+                borderRadius: "14px",
+                border: isDark
+                  ? "1px solid rgba(255,255,255,0.10)"
+                  : "1px solid rgba(203,213,225,0.5)",
+                boxShadow: isDark
+                  ? "0 4px 12px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.07)"
+                  : "0 4px 12px rgba(0,0,0,0.05),inset 0 1px 0 white",
+                cursor: "pointer",
+                fontWeight: 700,
+                fontSize: 14,
+                transition: "all 0.3s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-2px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+              }}
+            >
+              Save
+            </button>
+
+            <div
+              className="status-badge"
+              style={{
+                minWidth: 130,
+                padding: "10px 16px",
+                borderRadius: 14,
+                background: statusStyles.bg,
+                border: `1.5px solid ${statusStyles.border}`,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                fontSize: 12,
+                color: statusStyles.text,
+                fontWeight: 600,
+                transition: "all 0.3s",
+                backdropFilter: "blur(8px)",
+              }}
+            >
+              {(autoSaveStatus === "saving" ||
+                autoSaveStatus === "pending") && (
+                <div
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: "50%",
+                    border: `2px solid ${statusStyles.spin}`,
+                    borderTopColor: "transparent",
+                    animation: "spin 0.8s linear infinite",
+                  }}
+                />
+              )}
+              {autoSaveStatus === "saved" && (
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="2.5"
+                  strokeWidth="3"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  style={{ width: 13, height: 13 }}
+                  style={{ width: 14, height: 14 }}
                 >
-                  {copied ? (
-                    <polyline points="20 6 9 17 4 12" />
-                  ) : (
-                    <>
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                    </>
-                  )}
+                  <polyline points="20 6 9 17 4 12" />
                 </svg>
-              </div>
-
-              {copied && (
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: "-32px",
-                    right: "0",
-                    background: "#0f172a",
-                    color: "white",
-                    padding: "5px 10px",
-                    borderRadius: "50px",
-                    fontSize: "9px",
-                    fontWeight: 700,
-                    animation:
-                      "slideUpToast 0.3s cubic-bezier(0.16, 1, 0.3, 1) both",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                    pointerEvents: "none",
-                    zIndex: 100,
-                  }}
-                >
-                  Copied!
-                </div>
               )}
-            </div>
-
-            <div
-              className="save-status-group"
-              style={{ display: "flex", gap: 12, alignItems: "center" }}
-            >
-              <button
-                onClick={handleManualSave}
-                className="save-button"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
-                  color: "#334155",
-                  padding: "10px 20px",
-                  borderRadius: "14px",
-                  border: "1px solid rgba(203, 213, 225, 0.5)",
-                  boxShadow:
-                    "0 4px 12px rgba(0, 0, 0, 0.05), inset 0 1px 0 white",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                  fontSize: 14,
-                  transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                  fontFamily:
-                    "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-2px)";
-                  e.currentTarget.style.boxShadow =
-                    "0 8px 20px rgba(0,0,0,0.06), inset 0 1px 0 white";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow =
-                    "0 4px 12px rgba(0,0,0,0.05), inset 0 1px 0 white";
-                }}
-              >
-                Save
-              </button>
-
-              {/* Status Badge */}
-              <div
-                className="status-badge"
-                style={{
-                  minWidth: 130,
-                  padding: "10px 16px",
-                  borderRadius: 14,
-                  background: styles.bgColor,
-                  border: `1.5px solid ${styles.borderColor}`,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  fontSize: 12,
-                  color: styles.textColor,
-                  fontWeight: 600,
-                  transition: "all 0.3s ease-out",
-                  backdropFilter: "blur(8px)",
-                  fontFamily:
-                    "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-                  boxShadow: `inset 0 1px 2px rgba(255, 255, 255, 0.5), 0 4px 12px ${styles.spinnerColor}20`,
-                  animation:
-                    autoSaveStatus === "saving" || autoSaveStatus === "pending"
-                      ? "pulseStatus 2s infinite"
-                      : "none",
-                }}
-              >
-                {autoSaveStatus === "saving" || autoSaveStatus === "pending" ? (
-                  <div
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: "50%",
-                      border: `2px solid ${styles.spinnerColor}`,
-                      borderTopColor: "transparent",
-                      animation: "spin 0.8s linear infinite",
-                    }}
-                  />
-                ) : autoSaveStatus === "saved" ? (
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    style={{ width: 14, height: 14 }}
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                ) : null}
-                <span
-                  className="status-text"
-                  style={{ letterSpacing: "0.2px" }}
-                >
-                  {autoSaveStatus === "pending"
-                    ? "Pending"
-                    : autoSaveStatus === "saving"
-                      ? "Saving..."
-                      : autoSaveStatus === "saved"
-                        ? "Saved"
-                        : "Ready"}
-                </span>
-              </div>
+              <span className="status-text" style={{ letterSpacing: "0.2px" }}>
+                {autoSaveStatus === "pending"
+                  ? "Pending"
+                  : autoSaveStatus === "saving"
+                    ? "Saving..."
+                    : autoSaveStatus === "saved"
+                      ? "Saved"
+                      : "Ready"}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Canvas background with dots - fixed to viewport, moves with pan */}
+        {/* Canvas background */}
         <div
           style={{
             position: "fixed",
             inset: 0,
             zIndex: 0,
             pointerEvents: "none",
-            backgroundColor: canvasBg.color,
-            backgroundImage: `radial-gradient(circle, ${canvasBg.dotColor} 1px, transparent 1px)`,
+            backgroundColor: dotBgColor,
+            backgroundImage: `radial-gradient(circle,${dotColor} 1px,transparent 1px)`,
             backgroundSize: `${20 * scale}px ${20 * scale}px`,
             backgroundPosition: `${position.x}px ${position.y}px`,
+            transition: "background-color 0.3s",
           }}
         />
-        {/* Soft vignette overlay */}
+        {/* Vignette */}
         <div
           style={{
             position: "fixed",
             inset: 0,
             pointerEvents: "none",
             zIndex: 1,
-            background:
-              "radial-gradient(ellipse at center, transparent 60%, rgba(148,163,184,0.08) 100%)",
+            background: isDark
+              ? "radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,0.25) 100%)"
+              : "radial-gradient(ellipse at center,transparent 60%,rgba(148,163,184,0.08) 100%)",
           }}
         />
 
+        {/* Stage */}
         <Stage
           ref={stageRef}
           width={stageWidth}
@@ -2844,34 +2591,29 @@ export default function Canvas({ id }: { id: string }) {
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp} // ensure strokes finish if cursor leaves canvas
+          onMouseLeave={handleMouseUp}
           onWheel={handleWheel}
         >
           <Layer ref={layerRef}>
             {elements.map((element) => {
               const isSelected = selectedElementIds.includes(element.id);
-              const isSingleSelected =
-                isSelected && selectedElementIds.length === 1;
+              const isSingle = isSelected && selectedElementIds.length === 1;
               const sharedProps = {
                 element,
                 isSelected,
-                isSingleSelected,
+                isSingleSelected: isSingle,
                 onSelect: selectElement,
-                // update store and flush autosave immediately after transform
-
                 onTransformEnd: (
-                  id: string,
+                  eid: string,
                   attrs: Partial<WhiteboardElement>,
                 ) => {
-                  updateElement(id, attrs);
-                  // Cancel pending debounce and flush now so transforms are saved immediately
+                  updateElement(eid, attrs);
                   if (saveTimerRef.current) {
                     window.clearTimeout(saveTimerRef.current);
                     saveTimerRef.current = null;
                   }
                   void flushChanges(false);
                 },
-                // Only pass onMultiDragEnd when multi-selected (single drag handles itself)
                 onMultiDragEnd:
                   selectedElementIds.length > 1
                     ? handleMultiDragEnd
@@ -2903,33 +2645,35 @@ export default function Canvas({ id }: { id: string }) {
                     <TextShape
                       {...sharedProps}
                       setTool={setTool}
-                      onEditingChange={handleEditingChange}
+                      onEditingChange={(v) => {
+                        isTextEditRef.current = v;
+                      }}
                     />
                   )}
                   {element.type === "sticky" && (
                     <StickyShape
                       {...sharedProps}
                       setTool={setTool}
-                      onEditingChange={handleEditingChange}
+                      onEditingChange={(v) => {
+                        isTextEditRef.current = v;
+                      }}
                     />
                   )}
                 </React.Fragment>
               );
             })}
 
-            {/* Unified multi-select box — shown when 2+ elements selected */}
             {selectedElementIds.length > 1 && (
               <MultiSelectBox
                 elements={elements}
                 selectedIds={selectedElementIds}
-                onDragAll={handleMultiSelectBoxDrag}
+                onDragAll={handleMultiBoxDrag}
                 onSelect={selectElement}
                 updateElement={updateElement}
                 onFlush={() => void flushChanges(false)}
               />
             )}
 
-            {/* Selection box */}
             {isDrawing && selectedTool === "select" && selectionBox && (
               <Rect
                 x={selectionBox.x}
@@ -2944,54 +2688,44 @@ export default function Canvas({ id }: { id: string }) {
               />
             )}
 
-            {/* Preview while drawing */}
-
-            {/* Preview while drawing */}
-            {isDrawing && currentElement && (
+            {isDrawing && currentEl && (
               <>
-                {currentElement.type === "rectangle" && (
+                {currentEl.type === "rectangle" && (
                   <Rect
-                    x={currentElement.x}
-                    y={currentElement.y}
-                    width={currentElement.width || 0}
-                    height={currentElement.height || 0}
+                    x={currentEl.x}
+                    y={currentEl.y}
+                    width={currentEl.width || 0}
+                    height={currentEl.height || 0}
                     stroke={COLORS.selection}
                     strokeWidth={2}
-                    fill={currentElement.fillColor || COLORS.selectionFill}
+                    fill={currentEl.fillColor || COLORS.selectionFill}
                     cornerRadius={4}
                     dash={[4, 3]}
                     listening={false}
                     opacity={0.7}
                   />
                 )}
-                {currentElement.type === "circle" &&
+                {currentEl.type === "circle" &&
                   (() => {
                     const r =
-                      Math.max(
-                        currentElement.width || 0,
-                        currentElement.height || 0,
-                      ) / 2;
+                      Math.max(currentEl.width || 0, currentEl.height || 0) / 2;
                     return (
                       <Circle
-                        x={(currentElement.x || 0) + r}
-                        y={(currentElement.y || 0) + r}
+                        x={(currentEl.x || 0) + r}
+                        y={(currentEl.y || 0) + r}
                         radius={r}
                         stroke={COLORS.selection}
                         strokeWidth={2}
-                        fill={currentElement.fillColor || COLORS.selectionFill}
+                        fill={currentEl.fillColor || COLORS.selectionFill}
                         dash={[4, 3]}
                         listening={false}
                         opacity={0.7}
                       />
                     );
                   })()}
-                {(currentElement.type === "line" ||
-                  currentElement.type === "arrow") && (
+                {(currentEl.type === "line" || currentEl.type === "arrow") && (
                   <Line
-                    points={(currentElement.points || []).flatMap((p) => [
-                      p.x,
-                      p.y,
-                    ])}
+                    points={(currentEl.points || []).flatMap((p) => [p.x, p.y])}
                     stroke={COLORS.selection}
                     strokeWidth={2}
                     lineCap="round"
@@ -3000,51 +2734,51 @@ export default function Canvas({ id }: { id: string }) {
                     listening={false}
                   />
                 )}
-                {currentElement.type === "triangle" &&
+                {currentEl.type === "triangle" &&
                   (() => {
-                    const w = currentElement.width || 0,
-                      h = currentElement.height || 0;
+                    const w = currentEl.width || 0,
+                      h = currentEl.height || 0;
                     return (
                       <Line
-                        x={currentElement.x}
-                        y={currentElement.y}
+                        x={currentEl.x}
+                        y={currentEl.y}
                         points={[w / 2, 0, w, h, 0, h]}
                         closed
                         stroke={COLORS.selection}
                         strokeWidth={2}
-                        fill={currentElement.fillColor || COLORS.selectionFill}
+                        fill={currentEl.fillColor || COLORS.selectionFill}
                         dash={[4, 3]}
                         listening={false}
                         opacity={0.7}
                       />
                     );
                   })()}
-                {currentElement.type === "diamond" &&
+                {currentEl.type === "diamond" &&
                   (() => {
-                    const w = currentElement.width || 0,
-                      h = currentElement.height || 0;
+                    const w = currentEl.width || 0,
+                      h = currentEl.height || 0;
                     return (
                       <Line
-                        x={currentElement.x}
-                        y={currentElement.y}
+                        x={currentEl.x}
+                        y={currentEl.y}
                         points={[w / 2, 0, w, h / 2, w / 2, h, 0, h / 2]}
                         closed
                         stroke={COLORS.selection}
                         strokeWidth={2}
-                        fill={currentElement.fillColor || COLORS.selectionFill}
+                        fill={currentEl.fillColor || COLORS.selectionFill}
                         dash={[4, 3]}
                         listening={false}
                         opacity={0.7}
                       />
                     );
                   })()}
-                {currentElement.type === "polygon" &&
+                {currentEl.type === "polygon" &&
                   (() => {
-                    const sides = (currentElement as any).sides || 6,
-                      w = currentElement.width || 0,
-                      h = currentElement.height || 0;
-                    const cx = (currentElement.x || 0) + w / 2,
-                      cy = (currentElement.y || 0) + h / 2,
+                    const sides = (currentEl as any).sides || 6,
+                      w = currentEl.width || 0,
+                      h = currentEl.height || 0;
+                    const cx = (currentEl.x || 0) + w / 2,
+                      cy = (currentEl.y || 0) + h / 2,
                       r = Math.min(w, h) / 2;
                     const pts: number[] = [];
                     for (let i = 0; i < sides; i++) {
@@ -3057,19 +2791,16 @@ export default function Canvas({ id }: { id: string }) {
                         closed
                         stroke={COLORS.selection}
                         strokeWidth={2}
-                        fill={currentElement.fillColor || COLORS.selectionFill}
+                        fill={currentEl.fillColor || COLORS.selectionFill}
                         dash={[4, 3]}
                         listening={false}
                         opacity={0.7}
                       />
                     );
                   })()}
-                {currentElement.type === "pencil" && (
+                {currentEl.type === "pencil" && (
                   <Line
-                    points={(currentElement.points || []).flatMap((p) => [
-                      p.x,
-                      p.y,
-                    ])}
+                    points={(currentEl.points || []).flatMap((p) => [p.x, p.y])}
                     stroke={COLORS.selection}
                     strokeWidth={2}
                     lineCap="round"
@@ -3083,18 +2814,11 @@ export default function Canvas({ id }: { id: string }) {
             )}
           </Layer>
 
-          {/* Dedicated Layer for Remote Cursors (Performance optimization) */}
           <Layer>
             {Array.from(remoteCursors.entries())
-              .filter(([socketId]) => socketId !== socket.id)
-              .map(([socketId, cursor]) => (
-                <Group
-                  key={socketId}
-                  x={cursor.x}
-                  y={cursor.y}
-                  listening={false}
-                >
-                  {/* Cursor Arrow */}
+              .filter(([sid]) => sid !== socket.id)
+              .map(([sid, cursor]) => (
+                <Group key={sid} x={cursor.x} y={cursor.y} listening={false}>
                   <Line
                     points={[0, 0, 0, 15, 4, 11, 10, 11]}
                     closed
@@ -3102,7 +2826,6 @@ export default function Canvas({ id }: { id: string }) {
                     stroke="white"
                     strokeWidth={1.5}
                   />
-                  {/* Name Label Background */}
                   <Rect
                     x={12}
                     y={12}
@@ -3124,7 +2847,7 @@ export default function Canvas({ id }: { id: string }) {
           </Layer>
         </Stage>
 
-        {/* HTML overlay for rich-text (htmlText) text elements */}
+        {/* Rich-text HTML overlay */}
         <div
           style={{
             position: "fixed",
@@ -3139,54 +2862,49 @@ export default function Canvas({ id }: { id: string }) {
         >
           {elements
             .filter((el) => el.type === "text" && el.htmlText)
-            .map((el) => {
-              const isElSelected = selectedElementIds.includes(el.id);
-              return (
-                <RichTextOverlayEl
-                  key={el.id}
-                  el={el}
-                  isElSelected={isElSelected}
-                  position={position}
-                  scale={scale}
-                  selectElement={selectElement}
-                  updateElement={updateElement}
-                  flushChanges={flushChanges}
-                  setQuillEditingElementId={setQuillEditingElementId}
-                  isAnyTextEditingRef={isAnyTextEditingRef}
-                  lastOverlaySelectTimeRef={lastOverlaySelectTimeRef}
-                  selectedTool={selectedTool}
-                />
-              );
-            })}
+            .map((el) => (
+              <RichTextOverlayEl
+                key={el.id}
+                el={el}
+                isElSelected={selectedElementIds.includes(el.id)}
+                position={position}
+                scale={scale}
+                selectElement={selectElement}
+                updateElement={updateElement}
+                flushChanges={flushChanges}
+                setQuillEditingElementId={setQuillEditId}
+                isAnyTextEditingRef={isTextEditRef}
+                lastOverlaySelectTimeRef={lastOverlaySelectTimeRef}
+                selectedTool={selectedTool}
+              />
+            ))}
         </div>
 
-        {/* Quill modal for newly placed text elements (opens immediately on placement) */}
-        {quillEditingElementId &&
+        {/* Quill modal */}
+        {quillEditId &&
           (() => {
-            const editEl = elements.find(
-              (el) => el.id === quillEditingElementId,
-            );
+            const editEl = elements.find((el) => el.id === quillEditId);
             return editEl ? (
               <QuillEditorModal
                 initialHtml={editEl.htmlText || ""}
                 onSave={(html, plain) => {
-                  updateElement(quillEditingElementId, {
+                  updateElement(quillEditId, {
                     text: plain || " ",
                     htmlText: html,
                   });
-                  setQuillEditingElementId(null);
-                  isAnyTextEditingRef.current = false;
+                  setQuillEditId(null);
+                  isTextEditRef.current = false;
                   void flushChanges(false);
                 }}
                 onClose={() => {
-                  setQuillEditingElementId(null);
-                  isAnyTextEditingRef.current = false;
+                  setQuillEditId(null);
+                  isTextEditRef.current = false;
                 }}
               />
             ) : null;
           })()}
 
-        {/* ── YIO Logo (top-left) ── */}
+        {/* YIO logo */}
         <div
           className="top-left-logo"
           style={{
@@ -3194,116 +2912,94 @@ export default function Canvas({ id }: { id: string }) {
             top: 20,
             left: 20,
             zIndex: 60,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
             pointerEvents: "none",
             userSelect: "none",
           }}
         >
           <div
             style={{
-              fontFamily: "'Syne', sans-serif",
+              fontFamily: "'Syne',sans-serif",
               fontSize: "1.8rem",
               fontWeight: 800,
               letterSpacing: "-1px",
               background:
-                "linear-gradient(135deg, #a78bfa 0%, #f472b6 55%, #38bdf8 100%)",
+                "linear-gradient(135deg,#a78bfa 0%,#f472b6 55%,#38bdf8 100%)",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
-              filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.1))",
             }}
           >
             YIO
           </div>
         </div>
 
-        {/* Keyframe for pinging ring */}
+        {/* Toasts */}
+        <div
+          style={{
+            position: "fixed",
+            bottom: 80,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 200,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            alignItems: "center",
+            pointerEvents: "none",
+          }}
+        >
+          {toasts.map((t) => (
+            <div
+              key={t.id}
+              style={{
+                background: isDark ? "rgba(15,18,35,0.97)" : "#0f172a",
+                color: "white",
+                padding: "8px 16px",
+                borderRadius: "50px",
+                fontSize: 12,
+                fontWeight: 600,
+                boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+                borderLeft: `3px solid ${t.color}`,
+                animation: "slideUpToast 0.3s ease",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {t.message}
+            </div>
+          ))}
+        </div>
+
         <style>{`
-  @keyframes pingRing {
-    0%   { transform: scale(1);    opacity: 0.5; }
-    70%  { transform: scale(1.45); opacity: 0;   }
-    100% { transform: scale(1.45); opacity: 0;   }
-  }
-  @keyframes slideUpToast {
-    from { opacity: 0; transform: translateY(12px) scale(0.95); }
-    to   { opacity: 1; transform: translateY(0)    scale(1);    }
-  }
-  @media (max-width: 800px) {
-    .top-left-logo {
-      top: 15px !important;
-      left: 15px !important;
-    }
-    .top-center-status {
-      top: 15px !important;
-      padding: 4px 10px !important;
-      left: 50% !important;
-      transform: translateX(-50%) !important;
-    }
-    .top-right-actions {
-      top: 15px !important;
-      right: 15px !important;
-      gap: 6px !important;
-    }
-    .save-status-group {
-      position: fixed !important;
-      bottom: 15px !important;
-      left: 50% !important;
-      transform: translateX(-50%) !important;
-      background: rgba(255, 255, 255, 0.8) !important;
-      backdrop-filter: blur(8px) !important;
-      padding: 6px 12px !important;
-      border-radius: 50px !important;
-      border: 1px solid rgba(0,0,0,0.05) !important;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.08) !important;
-      width: auto !important;
-      z-index: 100 !important;
-      white-space: nowrap !important;
-      gap: 8px !important;
-    }
-    .save-button {
-      padding: 6px 14px !important;
-      font-size: 11px !important;
-      border-radius: 50px !important;
-    }
-    .status-badge {
-      min-width: auto !important;
-      padding: 6px 10px !important;
-      background: transparent !important;
-      border: none !important;
-      box-shadow: none !important;
-      gap: 6px !important;
-    }
-    .status-text {
-      font-size: 10px !important;
-    }
-    .room-id-box {
-      padding: 4px 8px !important;
-      border-radius: 8px !important;
-    }
-  }
-  @media (max-width: 500px) {
-    .top-left-logo div {
-      font-size: 1.5rem !important;
-    }
-    .top-center-status span {
-      display: none !important;
-    }
-    .room-id-label, .room-id-value, .share-label {
-      display: none !important;
-    }
-    .mobile-share-text {
-      display: block !important;
-      font-size: 9px !important;
-      font-weight: 800 !important;
-    }
-    .save-status-group {
-      bottom: 10px !important;
-      gap: 4px !important;
-      padding: 4px 10px !important;
-    }
-  }
-`}</style>
+          @keyframes pingRing    { 0%{transform:scale(1);opacity:.5} 70%{transform:scale(1.45);opacity:0} 100%{transform:scale(1.45);opacity:0} }
+          @keyframes slideUpToast{ from{opacity:0;transform:translateY(12px) scale(.95)} to{opacity:1;transform:translateY(0) scale(1)} }
+          @keyframes spin        { to{transform:rotate(360deg)} }
+
+          @media(max-width:800px){
+            .top-left-logo     { top:15px!important; left:15px!important; }
+            .top-center-status { top:15px!important; padding:4px 10px!important; }
+            .top-right-actions { top:15px!important; right:15px!important; gap:6px!important; }
+            .save-status-group {
+              position:fixed!important; bottom:15px!important; left:50%!important;
+              transform:translateX(-50%)!important;
+              background:${isDark ? "rgba(15,18,35,0.88)" : "rgba(255,255,255,0.88)"}!important;
+              backdrop-filter:blur(8px)!important; padding:6px 12px!important;
+              border-radius:50px!important; border:1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)"}!important;
+              box-shadow:0 4px 15px rgba(0,0,0,0.08)!important; z-index:100!important;
+              white-space:nowrap!important; gap:8px!important;
+            }
+            .save-button   { padding:6px 14px!important; font-size:11px!important; border-radius:50px!important; }
+            .status-badge  { min-width:auto!important; padding:6px 10px!important; background:transparent!important; border:none!important; box-shadow:none!important; gap:6px!important; }
+            .status-text   { font-size:10px!important; }
+            .room-id-box   { padding:4px 8px!important; border-radius:8px!important; }
+          }
+          @media(max-width:500px){
+            .top-left-logo div         { font-size:1.5rem!important; }
+            .top-center-status span    { display:none!important; }
+            .room-id-label,.room-id-value,.share-label { display:none!important; }
+            .mobile-share-text         { display:block!important; }
+            .save-status-group         { bottom:10px!important; gap:4px!important; padding:4px 10px!important; }
+          }
+        `}</style>
+
         <ControlPanel
           scale={scale}
           onZoomIn={handleZoomIn}
@@ -3315,6 +3011,7 @@ export default function Canvas({ id }: { id: string }) {
           onStrokeColorChange={setElementStrokeColor}
           fillColor={elementFillColor}
           onFillColorChange={setElementFillColor}
+          isDark={isDark}
         />
       </div>
     </>
