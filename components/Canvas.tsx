@@ -28,6 +28,7 @@ import {
   PencilShape,
   TextShape,
   StickyShape,
+  ImageShape,
 } from "./shapes";
 import {
   COLORS,
@@ -1037,6 +1038,8 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
   lastOverlaySelectTimeRef,
   selectedTool,
 }) => {
+  const { isDark } = useTheme();
+
   const lastClickRef = useRef<number>(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const roRef = useRef<ResizeObserver | null>(null);
@@ -1128,6 +1131,23 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
     }
   };
 
+  function recolorHtml(html: string, isDark: boolean): string {
+    const newColor = isDark ? "#ffffff" : "#1e293b";
+    // Replace any of the two "default" colors we ever write
+    return html
+      .replace(/color\s*:\s*#ffffff/gi, `color: ${newColor}`)
+      .replace(/color\s*:\s*white/gi, `color: ${newColor}`)
+      .replace(
+        /color\s*:\s*rgb\(\s*255\s*,\s*255\s*,\s*255\s*\)/gi,
+        `color: ${newColor}`,
+      )
+      .replace(/color\s*:\s*#1e293b/gi, `color: ${newColor}`)
+      .replace(
+        /color\s*:\s*rgb\(\s*30\s*,\s*41\s*,\s*59\s*\)/gi,
+        `color: ${newColor}`,
+      );
+  }
+
   return (
     <div
       ref={containerRef}
@@ -1156,7 +1176,7 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
     >
       <div
         className="ql-editor"
-        dangerouslySetInnerHTML={{ __html: el.htmlText! }}
+        dangerouslySetInnerHTML={{ __html: recolorHtml(el.htmlText!, isDark) }}
         style={{
           padding: 0,
           margin: 0,
@@ -1171,6 +1191,7 @@ const RichTextOverlayEl: React.FC<RichTextOverlayElProps> = ({
           boxSizing: "border-box",
           pointerEvents: "none",
           display: "block",
+          color: isDark ? "#ffffff" : "#1e293b",
         }}
       />
     </div>
@@ -1207,6 +1228,8 @@ export default function Canvas({ id }: { id: string }) {
   // ── Refs & state ──
   const stageRef = useRef<Konva.Stage>(null);
   const layerRef = useRef<Konva.Layer>(null);
+  const prevIsDarkRef = React.useRef(isDark);
+
   const lastOverlaySelectTimeRef = useRef<number>(0);
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
   const drawStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -1239,14 +1262,65 @@ export default function Canvas({ id }: { id: string }) {
     () => getCanvasBgColors(false)[0],
   );
 
-  // Auto-switch canvas bg default when theme changes
-  const prevIsDarkRef = React.useRef(isDark);
   useEffect(() => {
-    if (prevIsDarkRef.current !== isDark) {
-      prevIsDarkRef.current = isDark;
-      setCanvasBg(getCanvasBgColors(isDark)[0]);
+    if (prevIsDarkRef.current === isDark) return;
+    prevIsDarkRef.current = isDark;
+
+    // 1. Switch canvas background
+    setCanvasBg(getCanvasBgColors(isDark)[0]);
+
+    const oldStrokeColors = getStrokeColors(!isDark);
+    const oldFillColors = getFillColors(!isDark);
+    const newStrokeColors = getStrokeColors(isDark);
+    const newFillColors = getFillColors(isDark);
+
+    // 2. Remap stroke color by index
+    const strokeIdx = oldStrokeColors.findIndex(
+      (c) => c.color === elementStrokeColor,
+    );
+    if (strokeIdx !== -1 && newStrokeColors[strokeIdx]) {
+      setElementStrokeColor(newStrokeColors[strokeIdx].color);
+    } else {
+      setElementStrokeColor(newStrokeColors[0].color);
+    }
+
+    // 3. Remap fill color by index
+    const fillIdx = oldFillColors.findIndex(
+      (c) => c.color === elementFillColor,
+    );
+    if (fillIdx !== -1 && newFillColors[fillIdx]) {
+      setElementFillColor(newFillColors[fillIdx].color);
+    } else {
+      setElementFillColor(newFillColors[0].color);
+    }
+
+    // 4. Remap ALL existing elements' colors by index
+    const currentElements = useStore.getState().elements;
+    for (const el of currentElements) {
+      const attrs: Partial<WhiteboardElement> = {};
+
+      if (el.strokeColor) {
+        const idx = oldStrokeColors.findIndex(
+          (c) => c.color === el.strokeColor,
+        );
+        if (idx !== -1 && newStrokeColors[idx]) {
+          attrs.strokeColor = newStrokeColors[idx].color;
+        }
+      }
+
+      if (el.fillColor && el.fillColor !== "transparent") {
+        const idx = oldFillColors.findIndex((c) => c.color === el.fillColor);
+        if (idx !== -1 && newFillColors[idx]) {
+          attrs.fillColor = newFillColors[idx].color;
+        }
+      }
+
+      if (Object.keys(attrs).length > 0) {
+        updateElement(el.id, attrs);
+      }
     }
   }, [isDark]);
+
   const [quillEditId, setQuillEditId] = useState<string | null>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<
     "idle" | "pending" | "saving" | "saved"
@@ -1291,6 +1365,10 @@ export default function Canvas({ id }: { id: string }) {
       lastSnapshotRef.current.clear();
       for (const el of deduped)
         lastSnapshotRef.current.set(el.id, JSON.stringify(el));
+      // Mark initial load as complete — changes after this are real user edits
+      setTimeout(() => {
+        isInitialLoadRef.current = false;
+      }, 100);
     };
     const onReceive = (el: WhiteboardElement) => {
       const s = useStore.getState();
@@ -1426,7 +1504,33 @@ export default function Canvas({ id }: { id: string }) {
   );
 
   useEffect(() => {
+    const handler = (e: Event) => {
+      const { src, width, height } = (e as CustomEvent).detail;
+      const stage = stageRef.current;
+      const cx = stage ? (stage.width() / 2 - position.x) / scale : 400;
+      const cy = stage ? (stage.height() / 2 - position.y) / scale : 300;
+      const newEl = {
+        id: `image-${Date.now()}`,
+        type: "image" as const,
+        x: cx - width / 2,
+        y: cy - height / 2,
+        width,
+        height,
+        src,
+      } as WhiteboardElement;
+      addElement(newEl);
+      selectElement(newEl.id);
+      setTool("select");
+      void flushChanges(false);
+    };
+    window.addEventListener("wb_insert_image", handler);
+    return () => window.removeEventListener("wb_insert_image", handler);
+  }, [addElement, selectElement, setTool, flushChanges, position, scale]);
+  const isInitialLoadRef = useRef(true);
+
+  useEffect(() => {
     const schedule = () => {
+      if (isInitialLoadRef.current) return; // skip during initial load
       setAutoSaveStatus("pending");
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = window.setTimeout(() => {
@@ -2659,6 +2763,7 @@ export default function Canvas({ id }: { id: string }) {
                       }}
                     />
                   )}
+                  {element.type === "image" && <ImageShape {...sharedProps} />}
                 </React.Fragment>
               );
             })}
@@ -2864,7 +2969,7 @@ export default function Canvas({ id }: { id: string }) {
             .filter((el) => el.type === "text" && el.htmlText)
             .map((el) => (
               <RichTextOverlayEl
-                key={el.id}
+                key={`${el.id}-${isDark}`}
                 el={el}
                 isElSelected={selectedElementIds.includes(el.id)}
                 position={position}

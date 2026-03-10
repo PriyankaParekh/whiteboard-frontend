@@ -10,3 +10,4 @@ export { default as TextShape } from "./TextShape";
 export { default as StickyShape } from "./StickyShape";
 export { COLORS } from "./shared";
 export type { ShapeProps } from "./shared";
+export { default as ImageShape } from "./ImageShape";

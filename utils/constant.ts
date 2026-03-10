@@ -17,7 +17,7 @@ export const ELEMENT_STROKE_COLORS_LIGHT = [
 
 // Dark mode neon strokes
 export const ELEMENT_STROKE_COLORS_DARK = [
-  { color: "#f8fafc", name: "White" },
+  { color: "#e2e8f0", name: "Silver" },
   { color: "#ff2d55", name: "Neon Red" },
   { color: "#ff9f0a", name: "Neon Amber" },
   { color: "#ffd60a", name: "Neon Yellow" },
@@ -26,7 +26,7 @@ export const ELEMENT_STROKE_COLORS_DARK = [
   { color: "#bf5af2", name: "Neon Purple" },
   { color: "#ff375f", name: "Neon Pink" },
   { color: "#5ac8fa", name: "Neon Cyan" },
-  { color: "#ff6961", name: "Coral" },
+  { color: "#f8fafc", name: "White" },
   { color: "#64ffda", name: "Aqua" },
   { color: "transparent", name: "None" },
 ];

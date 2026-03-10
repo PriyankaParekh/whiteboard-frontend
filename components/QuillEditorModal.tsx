@@ -208,24 +208,23 @@ const QuillEditorModal: React.FC<QuillEditorModalProps> = ({
       destroyed = true;
     };
   }, []);
-
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     await new Promise((r) => setTimeout(r, 140));
     const div = document.createElement("div");
     div.innerHTML = valueRef.current;
 
-    // Walk every text node and element — if no explicit color is set, force white
-    // so the saved text always shows up on the canvas (dark or transparent bg).
-    const applyWhiteColor = (el: Element) => {
+    // Save a theme-neutral marker color that recolorHtml can always detect
+    // We save #ffffff as the "default" marker — recolorHtml will swap it on render
+    const applyDefaultColor = (el: Element) => {
       const htmlEl = el as HTMLElement;
       if (!htmlEl.style) return;
       if (!htmlEl.style.color) {
-        htmlEl.style.color = "#ffffff";
+        htmlEl.style.color = "#ffffff"; // neutral marker — recolorHtml handles display
       }
-      Array.from(el.children).forEach(applyWhiteColor);
+      Array.from(el.children).forEach(applyDefaultColor);
     };
-    Array.from(div.children).forEach(applyWhiteColor);
+    Array.from(div.children).forEach(applyDefaultColor);
 
     const processedHtml = div.innerHTML;
     onSave(processedHtml, div.textContent || "");

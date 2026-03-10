@@ -1,6 +1,8 @@
 "use client";
 
 import { useStore, ToolType } from "../store/useStore";
+import { useState } from "react";
+import ImageUploadModal from "./ImageUploadModal";
 import {
   MousePointer2,
   Square,
@@ -81,7 +83,7 @@ export default function Toolbar({ isDark }: ToolbarProps) {
     historyIndex,
     history,
   } = useStore();
-
+  const [showImageModal, setShowImageModal] = useState(false);
   const handleToolClick = (
     toolId: ToolType | "undo" | "redo" | "delete" | "upload",
   ) => {
@@ -98,6 +100,7 @@ export default function Toolbar({ isDark }: ToolbarProps) {
       return;
     }
     if (toolId === "upload") {
+      setShowImageModal(true);
       return;
     }
     setTool(toolId as ToolType);
@@ -211,6 +214,19 @@ export default function Toolbar({ isDark }: ToolbarProps) {
           );
         })}
       </div>
+      {showImageModal && (
+        <ImageUploadModal
+          onInsert={(src, width, height) => {
+            window.dispatchEvent(
+              new CustomEvent("wb_insert_image", {
+                detail: { src, width, height },
+              }),
+            );
+            setShowImageModal(false);
+          }}
+          onClose={() => setShowImageModal(false)}
+        />
+      )}
     </div>
   );
 }

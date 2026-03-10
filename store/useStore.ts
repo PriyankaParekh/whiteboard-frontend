@@ -27,7 +27,8 @@ export type ToolType =
   | "diamond"
   | "pencil"
   | "text"
-  | "sticky";
+  | "sticky"
+  | "image";
 
 export interface WhiteboardElement {
   fontSize: number;
@@ -52,6 +53,9 @@ export interface WhiteboardElement {
   scaleX?: number;
   scaleY?: number;
   groupId?: string;
+  src?: string;
+  opacity?: number;
+  cornerRadius?: number;
 }
 
 interface CanvasStore {
