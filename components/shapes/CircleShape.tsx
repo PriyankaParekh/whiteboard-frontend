@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect } from "react";
-import { Circle, Transformer } from "react-konva";
+import { Circle, Transformer, Text as KonvaText, Group } from "react-konva";
 import Konva from "konva";
 import { ShapeProps } from "./shared";
 import { COLORS, getShiftKey } from "./shared";
@@ -14,12 +14,12 @@ const CircleShape: React.FC<ShapeProps> = ({
   onTransformEnd,
   onMultiDragEnd,
 }) => {
-  const circleRef = useRef<Konva.Circle>(null);
+  const groupRef = useRef<Konva.Group>(null);
   const trRef = useRef<Konva.Transformer>(null);
 
   useEffect(() => {
-    if (isSingleSelected && trRef.current && circleRef.current) {
-      trRef.current.nodes([circleRef.current]);
+    if (isSingleSelected && trRef.current && groupRef.current) {
+      trRef.current.nodes([groupRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
   }, [isSingleSelected]);
@@ -28,32 +28,26 @@ const CircleShape: React.FC<ShapeProps> = ({
 
   return (
     <>
-      <Circle
-        ref={circleRef}
-        x={element.x + radius}
-        y={element.y + radius}
-        radius={radius}
-        stroke={
-          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
-        }
-        strokeWidth={element.strokeWidth || 2}
-        fill={element.fillColor || COLORS.fill}
+      <Group
+        ref={groupRef}
+        x={element.x}
+        y={element.y}
         draggable={isSelected}
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onDragEnd={(e) => {
-          const nx = e.target.x() - radius,
-            ny = e.target.y() - radius;
+          const nx = e.target.x(),
+            ny = e.target.y();
           if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
           else onTransformEnd(element.id, { x: nx, y: ny });
         }}
         onTransformEnd={() => {
-          const node = circleRef.current;
+          const node = groupRef.current;
           if (node) {
-            const newRadius = node.radius() * node.scaleX();
+            const newRadius = radius * node.scaleX();
             onTransformEnd(element.id, {
-              x: node.x() - newRadius,
-              y: node.y() - newRadius,
+              x: node.x(),
+              y: node.y(),
               width: Math.max(10, newRadius * 2),
               height: Math.max(10, newRadius * 2),
             });
@@ -61,7 +55,34 @@ const CircleShape: React.FC<ShapeProps> = ({
             node.scaleY(1);
           }
         }}
-      />
+      >
+        <Circle
+          x={radius}
+          y={radius}
+          radius={radius}
+          stroke={
+            isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
+          }
+          strokeWidth={element.strokeWidth || 2}
+          fill={element.fillColor || COLORS.fill}
+        />
+        {element.text ? (
+          <KonvaText
+            x={0}
+            y={0}
+            width={radius * 2}
+            height={radius * 2}
+            text={element.text}
+            fontSize={element.fontSize || 13}
+            fill="#1e293b"
+            align="center"
+            verticalAlign="middle"
+            wrap="word"
+            ellipsis
+            listening={false}
+          />
+        ) : null}
+      </Group>
       {isSingleSelected && (
         <Transformer
           ref={trRef}

@@ -2,6 +2,7 @@
 
 import { useStore, ToolType } from "../store/useStore";
 import { useState } from "react";
+import BrainstormModal from "./BrainstromModal";
 import ImageUploadModal from "./ImageUploadModal";
 import {
   MousePointer2,
@@ -19,6 +20,7 @@ import {
   RotateCw,
   Upload,
 } from "lucide-react";
+import DiagramModal from "./DiagramGenerator";
 
 interface ToolbarButton {
   id: ToolType | "undo" | "redo" | "delete" | "upload";
@@ -84,8 +86,18 @@ export default function Toolbar({ isDark }: ToolbarProps) {
     history,
   } = useStore();
   const [showImageModal, setShowImageModal] = useState(false);
+  const [showBrainstorm, setShowBrainstorm] = useState(false);
+  const [showDiagram, setShowDiagram] = useState(false);
+
   const handleToolClick = (
-    toolId: ToolType | "undo" | "redo" | "delete" | "upload",
+    toolId:
+      | ToolType
+      | "undo"
+      | "redo"
+      | "delete"
+      | "upload"
+      | "brainstorm"
+      | "diagram",
   ) => {
     if (toolId === "undo") {
       undo();
@@ -101,6 +113,14 @@ export default function Toolbar({ isDark }: ToolbarProps) {
     }
     if (toolId === "upload") {
       setShowImageModal(true);
+      return;
+    }
+    if (toolId === "brainstorm") {
+      setShowBrainstorm(true);
+      return;
+    }
+    if (toolId === "diagram") {
+      setShowDiagram(true);
       return;
     }
     setTool(toolId as ToolType);
@@ -139,6 +159,68 @@ export default function Toolbar({ isDark }: ToolbarProps) {
         zIndex: 50,
       }}
     >
+      <button
+        key="brainstorm"
+        onClick={() => setShowBrainstorm(true)}
+        title="AI Brainstorm"
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 10,
+          border: "none",
+          background:
+            "linear-gradient(135deg,rgba(124,58,237,0.15),rgba(168,85,247,0.1))",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 18,
+          transition: "all .15s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background =
+            "linear-gradient(135deg,rgba(124,58,237,0.3),rgba(168,85,247,0.2))";
+          e.currentTarget.style.transform = "scale(1.08)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background =
+            "linear-gradient(135deg,rgba(124,58,237,0.15),rgba(168,85,247,0.1))";
+          e.currentTarget.style.transform = "scale(1)";
+        }}
+      >
+        🧠
+      </button>
+      <button
+        onClick={() => setShowDiagram(true)}
+        title="AI Diagram Generator"
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 10,
+          border: "none",
+          background:
+            "linear-gradient(135deg,rgba(37,99,235,0.15),rgba(79,70,229,0.1))",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 18,
+          transition: "all .15s",
+          marginBottom: 6,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background =
+            "linear-gradient(135deg,rgba(37,99,235,0.3),rgba(79,70,229,0.2))";
+          e.currentTarget.style.transform = "scale(1.08)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background =
+            "linear-gradient(135deg,rgba(37,99,235,0.15),rgba(79,70,229,0.1))";
+          e.currentTarget.style.transform = "scale(1)";
+        }}
+      >
+        📊
+      </button>
       <div
         style={{
           background: panelBg,
@@ -225,6 +307,28 @@ export default function Toolbar({ isDark }: ToolbarProps) {
             setShowImageModal(false);
           }}
           onClose={() => setShowImageModal(false)}
+        />
+      )}
+      {showBrainstorm && (
+        <BrainstormModal
+          onInsert={(ideas) => {
+            window.dispatchEvent(
+              new CustomEvent("wb_brainstorm_insert", { detail: { ideas } }),
+            );
+            setShowBrainstorm(false);
+          }}
+          onClose={() => setShowBrainstorm(false)}
+        />
+      )}
+      {showDiagram && (
+        <DiagramModal
+          onInsert={(data) => {
+            window.dispatchEvent(
+              new CustomEvent("wb_diagram_insert", { detail: { data } }),
+            );
+            setShowDiagram(false);
+          }}
+          onClose={() => setShowDiagram(false)}
         />
       )}
     </div>

@@ -5,6 +5,7 @@ import { Group, Rect, Transformer, Text as KonvaText } from "react-konva";
 import Konva from "konva";
 import { ShapeProps, getShiftKey, getStickyNoteStrokeColor } from "./shared";
 import { COLORS } from "./shared";
+import AITextMenu from "../AiTextMenu";
 
 const StickyShape: React.FC<ShapeProps> = ({
   element,
@@ -20,10 +21,11 @@ const StickyShape: React.FC<ShapeProps> = ({
   const trRef = useRef<Konva.Transformer>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [aiMenu, setAiMenu] = useState<{ x: number; y: number } | null>(null);
   const lastClickTimeRef = useRef(0);
   const isEditingRef = useRef(false);
-  const width = element.width || 180,
-    height = element.height || 180;
+  const width = element.width || 180;
+  const height = element.height || 180;
 
   useEffect(() => {
     if (isSingleSelected && trRef.current && groupRef.current && !isEditing) {
@@ -52,7 +54,6 @@ const StickyShape: React.FC<ShapeProps> = ({
       }
       return;
     }
-
     isEditingRef.current = true;
     if (!groupRef.current) return;
     const stage = groupRef.current.getStage();
@@ -63,7 +64,7 @@ const StickyShape: React.FC<ShapeProps> = ({
 
     const textarea = document.createElement("textarea");
     textarea.value = element.text || "";
-    textarea.style.cssText = `position:fixed;left:${stageBox.left + absPos.x}px;top:${stageBox.top + absPos.y}px;width:${width * screenScale}px;height:${height * screenScale}px;font-size:${(element.fontSize || 20) * screenScale}px;padding:10px;border:2px solid ${COLORS.selection};background-color:${element.fillColor || "#fef3c7"};z-index:10000;font-family:inherit;resize:none;outline:none;box-shadow:0 4px 12px rgba(0,0,0,0.15);box-sizing:border-box;border-radius:4px;`;
+    textarea.style.cssText = `position:fixed;left:${stageBox.left + absPos.x}px;top:${stageBox.top + absPos.y}px;width:${width * screenScale}px;height:${height * screenScale}px;font-size:${(element.fontSize || 20) * screenScale}px;padding:10px;border:2px solid ${COLORS.selection};background-color:${element.fillColor || "#fef3c7"};z-index:10000;font-family:inherit;resize:none;outline:none;box-shadow:0 4px 12px rgba(0,0,0,0.15);box-sizing:border-box;border-radius:4px;color:#374151;`;
     textarea.addEventListener("mousedown", (e) => e.stopPropagation());
     textarea.addEventListener("pointerdown", (e) => e.stopPropagation());
     textarea.addEventListener("keydown", (e) => {
@@ -99,6 +100,7 @@ const StickyShape: React.FC<ShapeProps> = ({
       if (isDoubleClick && !isEditing) {
         e.evt.preventDefault();
         e.evt.stopPropagation();
+        setAiMenu(null);
         setIsEditing(true);
         onEditingChange?.(true);
         return;
@@ -106,6 +108,17 @@ const StickyShape: React.FC<ShapeProps> = ({
       if (!isEditing) onSelect(element.id, getShiftKey(e.evt));
     },
     [element.id, onSelect, isEditing, onEditingChange],
+  );
+
+  // Right-click → AI menu
+  const handleContextMenu = useCallback(
+    (e: Konva.KonvaEventObject<PointerEvent>) => {
+      e.evt.preventDefault();
+      e.evt.stopPropagation();
+      onSelect(element.id, false);
+      setAiMenu({ x: e.evt.clientX, y: e.evt.clientY });
+    },
+    [element.id, onSelect],
   );
 
   return (
@@ -117,6 +130,7 @@ const StickyShape: React.FC<ShapeProps> = ({
         draggable={isSingleSelected}
         onClick={handleClick}
         onTap={handleClick}
+        onContextMenu={handleContextMenu}
         onDragEnd={(e) => {
           const nx = e.target.x(),
             ny = e.target.y();
@@ -154,6 +168,7 @@ const StickyShape: React.FC<ShapeProps> = ({
           ellipsis
         />
       </Group>
+
       {isSingleSelected && !isEditing && (
         <Transformer
           ref={trRef}
@@ -176,6 +191,19 @@ const StickyShape: React.FC<ShapeProps> = ({
             node.scaleX(1);
             node.scaleY(1);
           }}
+        />
+      )}
+
+      {aiMenu && (
+        <AITextMenu
+          x={aiMenu.x}
+          y={aiMenu.y}
+          currentText={element.text || ""}
+          elementType="sticky"
+          onApply={(newText) => {
+            onTransformEnd(element.id, { text: newText });
+          }}
+          onClose={() => setAiMenu(null)}
         />
       )}
     </>

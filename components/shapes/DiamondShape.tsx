@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect } from "react";
-import { Line, Transformer } from "react-konva";
+import { Line, Transformer, Text as KonvaText, Group } from "react-konva";
 import Konva from "konva";
 import { ShapeProps } from "./shared";
 import { COLORS, getShiftKey } from "./shared";
@@ -14,41 +14,25 @@ const DiamondShape: React.FC<ShapeProps> = ({
   onTransformEnd,
   onMultiDragEnd,
 }) => {
-  const polyRef = useRef<Konva.Line>(null);
+  const groupRef = useRef<Konva.Group>(null);
   const trRef = useRef<Konva.Transformer>(null);
 
   useEffect(() => {
-    if (isSingleSelected && trRef.current && polyRef.current) {
-      trRef.current.nodes([polyRef.current]);
+    if (isSingleSelected && trRef.current && groupRef.current) {
+      trRef.current.nodes([groupRef.current]);
       trRef.current.getLayer()?.batchDraw();
     }
   }, [isSingleSelected]);
 
-  const width = element.width || 100,
-    height = element.height || 100;
+  const width = element.width || 100;
+  const height = element.height || 100;
 
   return (
     <>
-      <Line
-        ref={polyRef}
+      <Group
+        ref={groupRef}
         x={element.x}
         y={element.y}
-        points={[
-          width / 2,
-          0,
-          width,
-          height / 2,
-          width / 2,
-          height,
-          0,
-          height / 2,
-        ]}
-        closed
-        stroke={
-          isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
-        }
-        strokeWidth={element.strokeWidth || 2}
-        fill={element.fillColor || COLORS.fill}
         draggable={isSelected}
         onClick={(e) => onSelect(element.id, getShiftKey(e.evt))}
         onTap={(e) => onSelect(element.id, getShiftKey(e.evt))}
@@ -59,19 +43,56 @@ const DiamondShape: React.FC<ShapeProps> = ({
           else onTransformEnd(element.id, { x: nx, y: ny });
         }}
         onTransformEnd={() => {
-          const node = polyRef.current;
+          const node = groupRef.current;
           if (node) {
             onTransformEnd(element.id, {
               x: node.x(),
               y: node.y(),
-              width: Math.max(5, node.width() * node.scaleX()),
-              height: Math.max(5, node.height() * node.scaleY()),
+              width: Math.max(5, width * node.scaleX()),
+              height: Math.max(5, height * node.scaleY()),
             });
             node.scaleX(1);
             node.scaleY(1);
           }
         }}
-      />
+      >
+        <Line
+          x={0}
+          y={0}
+          points={[
+            width / 2,
+            0,
+            width,
+            height / 2,
+            width / 2,
+            height,
+            0,
+            height / 2,
+          ]}
+          closed
+          stroke={
+            isSelected ? COLORS.selection : element.strokeColor || COLORS.stroke
+          }
+          strokeWidth={element.strokeWidth || 2}
+          fill={element.fillColor || COLORS.fill}
+        />
+        {element.text ? (
+          <KonvaText
+            x={width * 0.2}
+            y={height * 0.25}
+            width={width * 0.6}
+            height={height * 0.5}
+            text={element.text}
+            fontSize={element.fontSize || 13}
+            fill="#1e293b"
+            align="center"
+            verticalAlign="middle"
+            wrap="word"
+            ellipsis
+            listening={false}
+          />
+        ) : null}
+      </Group>
       {isSingleSelected && (
         <Transformer
           ref={trRef}

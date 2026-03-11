@@ -5,6 +5,7 @@ import { Transformer, Rect } from "react-konva";
 import Konva from "konva";
 import { ShapeProps, getShiftKey, COLORS } from "./shared";
 import QuillEditorModal from "../QuillEditorModal";
+import AITextMenu from "../AiTextMenu";
 
 const MIN_W = 60;
 const MIN_H = 28;
@@ -22,25 +23,22 @@ const TextShape: React.FC<ShapeProps> = ({
   const rectRef = useRef<Konva.Rect>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [aiMenu, setAiMenu] = useState<{ x: number; y: number } | null>(null);
   const lastClickTimeRef = useRef(0);
 
   const elW = Math.max(MIN_W, element.width || MIN_W);
   const elH = Math.max(MIN_H, element.height || MIN_H);
 
-  // ── Attach transformer — always rendered, just shown/hidden ──────────────
   useEffect(() => {
     const tr = trRef.current;
     const rect = rectRef.current;
     if (!tr || !rect) return;
-
     if (isSingleSelected && !isEditing) {
-      // Guard: only attach if rect is actually in a layer
       if (rect.getLayer()) {
         tr.nodes([rect]);
         tr.getLayer()?.batchDraw();
       }
     } else {
-      // Detach so the transformer box disappears
       tr.nodes([]);
       tr.getLayer()?.batchDraw();
     }
@@ -50,10 +48,7 @@ const TextShape: React.FC<ShapeProps> = ({
     (html: string, plainText: string) => {
       setIsEditing(false);
       onEditingChange?.(false);
-      onTransformEnd(element.id, {
-        text: plainText || " ",
-        htmlText: html,
-      });
+      onTransformEnd(element.id, { text: plainText || " ", htmlText: html });
       setTool?.("select");
     },
     [element.id, onTransformEnd, onEditingChange, setTool],
@@ -73,6 +68,7 @@ const TextShape: React.FC<ShapeProps> = ({
       if (isDoubleClick) {
         e.evt.preventDefault();
         e.evt.stopPropagation();
+        setAiMenu(null);
         setIsEditing(true);
         onEditingChange?.(true);
         return;
@@ -82,16 +78,29 @@ const TextShape: React.FC<ShapeProps> = ({
     [element.id, onSelect, onEditingChange],
   );
 
+  // Right-click → AI menu
+  const handleContextMenu = useCallback(
+    (e: Konva.KonvaEventObject<PointerEvent>) => {
+      e.evt.preventDefault();
+      e.evt.stopPropagation();
+      onSelect(element.id, false);
+      setAiMenu({ x: e.evt.clientX, y: e.evt.clientY });
+    },
+    [element.id, onSelect],
+  );
+
   const handleTransformEnd = useCallback(
     (_e: Konva.KonvaEventObject<Event>) => {
       const node = rectRef.current;
       if (!node) return;
-      const scaleX = node.scaleX();
-      const scaleY = node.scaleY();
+      const scaleX = node.scaleX(),
+        scaleY = node.scaleY();
       const newW = Math.max(MIN_W, elW * scaleX);
       const newH = Math.max(MIN_H, elH * scaleY);
-      const fontScale = Math.max(scaleX, scaleY);
-      const newFontSize = Math.max(8, (element.fontSize || 28) * fontScale);
+      const newFontSize = Math.max(
+        8,
+        (element.fontSize || 28) * Math.max(scaleX, scaleY),
+      );
       node.scaleX(1);
       node.scaleY(1);
       onTransformEnd(element.id, {
@@ -108,9 +117,12 @@ const TextShape: React.FC<ShapeProps> = ({
     [element.id, element.fontSize, elW, elH, onTransformEnd],
   );
 
+  // Plain text from htmlText
+  const plainText =
+    element.text || element.htmlText?.replace(/<[^>]+>/g, "") || "";
+
   return (
     <>
-      {/* Invisible hit-target rect */}
       <Rect
         ref={rectRef}
         x={element.x}
@@ -128,16 +140,16 @@ const TextShape: React.FC<ShapeProps> = ({
         draggable={isSingleSelected}
         onClick={handleClick}
         onTap={handleClick}
+        onContextMenu={handleContextMenu}
         onDragEnd={(e) => {
-          const nx = e.target.x();
-          const ny = e.target.y();
+          const nx = e.target.x(),
+            ny = e.target.y();
           if (onMultiDragEnd) onMultiDragEnd(element.id, nx, ny);
           else onTransformEnd(element.id, { x: nx, y: ny });
         }}
         onTransformEnd={handleTransformEnd}
       />
 
-      {/* Multi-select dashed outline */}
       {isSelected && !isSingleSelected && (
         <Rect
           x={element.x - 3}
@@ -153,11 +165,6 @@ const TextShape: React.FC<ShapeProps> = ({
         />
       )}
 
-      {/*
-        Transformer is ALWAYS mounted so React-Konva never tries to add an
-        undefined node to the Konva tree. We detach it via tr.nodes([]) when
-        not needed — that's what hides it — instead of unmounting the element.
-      */}
       <Transformer
         ref={trRef}
         rotateEnabled={false}
@@ -177,10 +184,9 @@ const TextShape: React.FC<ShapeProps> = ({
           "top-center",
           "bottom-center",
         ]}
-        boundBoxFunc={(oldBox, newBox) => {
-          if (newBox.width < MIN_W || newBox.height < MIN_H) return oldBox;
-          return newBox;
-        }}
+        boundBoxFunc={(oldBox, newBox) =>
+          newBox.width < MIN_W || newBox.height < MIN_H ? oldBox : newBox
+        }
         visible={isSingleSelected && !isEditing}
       />
 
@@ -189,6 +195,24 @@ const TextShape: React.FC<ShapeProps> = ({
           initialHtml={element.htmlText || ""}
           onSave={finishEditing}
           onClose={cancelEditing}
+        />
+      )}
+
+      {aiMenu && (
+        <AITextMenu
+          x={aiMenu.x}
+          y={aiMenu.y}
+          currentText={plainText}
+          elementType="text"
+          onApply={(newText, newHtml) => {
+            onTransformEnd(element.id, {
+              text: newText,
+              htmlText:
+                newHtml ||
+                `<p><span style="color:#ffffff">${newText}</span></p>`,
+            });
+          }}
+          onClose={() => setAiMenu(null)}
         />
       )}
     </>

@@ -1526,6 +1526,174 @@ export default function Canvas({ id }: { id: string }) {
     window.addEventListener("wb_insert_image", handler);
     return () => window.removeEventListener("wb_insert_image", handler);
   }, [addElement, selectElement, setTool, flushChanges, position, scale]);
+  // ── Brainstorm insert handler ──────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { ideas } = (e as CustomEvent).detail as {
+        ideas: Array<{ title: string; body: string; color: string }>;
+      };
+      if (!ideas || ideas.length === 0) return;
+
+      const stage = stageRef.current;
+      const centerX = stage ? (stage.width() / 2 - position.x) / scale : 400;
+      const centerY = stage ? (stage.height() / 2 - position.y) / scale : 300;
+
+      // Grid layout: auto columns based on count
+      const cols = ideas.length <= 4 ? 2 : ideas.length <= 6 ? 3 : 4;
+      const CARD_W = 160;
+      const CARD_H = 160;
+      const GAP = 20;
+      const totalW = cols * CARD_W + (cols - 1) * GAP;
+      const rows = Math.ceil(ideas.length / cols);
+      const totalH = rows * CARD_H + (rows - 1) * GAP;
+
+      const startX = centerX - totalW / 2;
+      const startY = centerY - totalH / 2;
+
+      const newElements: WhiteboardElement[] = ideas.map((idea, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        return {
+          id: `sticky-bs-${Date.now()}-${i}`,
+          type: "sticky" as const,
+          x: startX + col * (CARD_W + GAP),
+          y: startY + row * (CARD_H + GAP),
+          width: CARD_W,
+          height: CARD_H,
+          text: `${idea.title}\n\n${idea.body}`,
+          fillColor: idea.color,
+          strokeColor: idea.color,
+          fontSize: 13,
+        } as WhiteboardElement;
+      });
+
+      // Add all elements at once
+      for (const el of newElements) {
+        addElement(el);
+      }
+
+      // Select all of them
+      selectElements(newElements.map((el) => el.id));
+      setTool("select");
+      void flushChanges(false);
+    };
+
+    window.addEventListener("wb_brainstorm_insert", handler);
+    return () => window.removeEventListener("wb_brainstorm_insert", handler);
+  }, [addElement, selectElements, setTool, flushChanges, position, scale]);
+
+  // ── Diagram insert handler ────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { data } = (e as CustomEvent).detail as {
+        data: {
+          nodes: Array<{
+            id: string;
+            type: "rectangle" | "circle" | "diamond" | "sticky";
+            label: string;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+            fillColor: string;
+            strokeColor: string;
+          }>;
+          edges: Array<{ from: string; to: string; label?: string }>;
+        };
+      };
+      if (!data || !data.nodes.length) return;
+
+      const stage = stageRef.current;
+      const centerX = stage ? (stage.width() / 2 - position.x) / scale : 400;
+      const centerY = stage ? (stage.height() / 2 - position.y) / scale : 300;
+
+      // Find bounding box of diagram
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity;
+      for (const n of data.nodes) {
+        minX = Math.min(minX, n.x);
+        minY = Math.min(minY, n.y);
+        maxX = Math.max(maxX, n.x + n.width);
+        maxY = Math.max(maxY, n.y + n.height);
+      }
+      const diagW = maxX - minX;
+      const diagH = maxY - minY;
+
+      // Offset so diagram is centered in viewport
+      const offsetX = centerX - diagW / 2 - minX;
+      const offsetY = centerY - diagH / 2 - minY;
+
+      // ID remap (AI IDs → real canvas IDs)
+      const idMap = new Map<string, string>();
+
+      // Add all nodes
+      const newElements: WhiteboardElement[] = [];
+
+      for (const node of data.nodes) {
+        const realId = `diag-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        idMap.set(node.id, realId);
+
+        newElements.push({
+          id: realId,
+          type:
+            node.type === "sticky"
+              ? "sticky"
+              : node.type === "diamond"
+                ? "diamond"
+                : node.type === "circle"
+                  ? "circle"
+                  : "rectangle",
+          x: node.x + offsetX,
+          y: node.y + offsetY,
+          width: node.width,
+          height: node.height,
+          text: node.label,
+          fillColor: node.fillColor,
+          strokeWidth: 2,
+          fontSize: node.type === "circle" ? 11 : 14,
+          strokeColor: node.strokeColor,
+        } as WhiteboardElement);
+      }
+
+      // Add edges as arrow elements
+      const nodeMap = new Map(data.nodes.map((n) => [n.id, n]));
+      for (const edge of data.edges) {
+        const from = nodeMap.get(edge.from);
+        const to = nodeMap.get(edge.to);
+        if (!from || !to) continue;
+
+        const x1 = from.x + offsetX + from.width / 2;
+        const y1 = from.y + offsetY + from.height / 2;
+        const x2 = to.x + offsetX + to.width / 2;
+        const y2 = to.y + offsetY + to.height / 2;
+
+        newElements.push({
+          id: `diag-arrow-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          type: "arrow",
+          x: 0,
+          y: 0,
+          points: [
+            { x: x1, y: y1 },
+            { x: x2, y: y2 },
+          ],
+          strokeColor: "#4f46e5",
+          strokeWidth: 2,
+          text: edge.label || "",
+        } as WhiteboardElement);
+      }
+
+      for (const el of newElements) addElement(el);
+      selectElements(newElements.map((el) => el.id));
+      setTool("select");
+      void flushChanges(false);
+    };
+
+    window.addEventListener("wb_diagram_insert", handler);
+    return () => window.removeEventListener("wb_diagram_insert", handler);
+  }, [addElement, selectElements, setTool, flushChanges, position, scale]);
+
   const isInitialLoadRef = useRef(true);
 
   useEffect(() => {
