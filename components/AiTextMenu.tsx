@@ -3,6 +3,22 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import ReactDOM from "react-dom";
 import { useTheme } from "../store/useTheme";
+import {
+  Wand2,
+  BriefcaseBusiness,
+  MessageCircle,
+  Scissors,
+  NotebookPen,
+  FileText,
+  SpellCheck2,
+  List,
+  Languages,
+  Bot,
+  X,
+  ArrowLeft,
+  Globe,
+  Check,
+} from "lucide-react";
 
 interface AITextMenuProps {
   x: number;
@@ -13,66 +29,66 @@ interface AITextMenuProps {
   onClose: () => void;
 }
 
-const GROQ_API_KEY = process.env.NEXT_PUBLIC_GROQ_API_KEY || "";
+const GROQ_API_KEY = "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";
 
 const AI_ACTIONS = [
   {
     id: "improve",
-    icon: "✨",
+    icon: <Wand2 size={13} strokeWidth={2} />,
     label: "Improve Writing",
     prompt:
       "Improve the writing quality of this text. Make it clearer, more engaging, and well-structured. Keep the same meaning and approximate length.",
   },
   {
     id: "formal",
-    icon: "👔",
+    icon: <BriefcaseBusiness size={13} strokeWidth={2} />,
     label: "Make Formal",
     prompt:
       "Rewrite this text in a formal, professional tone suitable for business communication.",
   },
   {
     id: "casual",
-    icon: "😊",
+    icon: <MessageCircle size={13} strokeWidth={2} />,
     label: "Make Casual",
     prompt: "Rewrite this text in a friendly, casual conversational tone.",
   },
   {
     id: "shorter",
-    icon: "✂️",
+    icon: <Scissors size={13} strokeWidth={2} />,
     label: "Make Shorter",
     prompt:
       "Shorten this text significantly while keeping the key points. Be concise.",
   },
   {
     id: "longer",
-    icon: "📝",
+    icon: <NotebookPen size={13} strokeWidth={2} />,
     label: "Expand",
     prompt:
       "Expand this text with more detail, examples, and explanation. Keep the same tone.",
   },
   {
     id: "summarize",
-    icon: "📋",
+    icon: <FileText size={13} strokeWidth={2} />,
     label: "Summarize",
     prompt: "Summarize this text in 1-2 sentences capturing the key points.",
   },
   {
     id: "grammar",
-    icon: "✅",
+    icon: <SpellCheck2 size={13} strokeWidth={2} />,
     label: "Fix Grammar",
     prompt:
       "Fix all grammar, spelling, and punctuation errors in this text. Keep the original meaning and style exactly.",
   },
   {
     id: "bullets",
-    icon: "•",
+    icon: <List size={13} strokeWidth={2} />,
     label: "Convert to Bullets",
     prompt:
       "Convert this text into a clear bullet-point list. Each bullet should be concise.",
   },
   {
     id: "translate",
-    icon: "🌐",
+    icon: <Languages size={13} strokeWidth={2} />,
     label: "Translate...",
     prompt: "",
     isTranslate: true,
@@ -110,7 +126,7 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
   const [showTranslate, setShowTranslate] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Theme tokens
+  // ── Theme tokens ────────────────────────────────────────────────────────
   const bg = isDark ? "rgba(10,13,26,0.97)" : "rgba(255,255,255,0.98)";
   const border = isDark ? "rgba(255,255,255,0.08)" : "rgba(203,213,225,0.6)";
   const shadow = isDark
@@ -129,6 +145,9 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
     ? "rgba(99,102,241,0.25)"
     : "rgba(99,102,241,0.15)";
   const accentBar = "linear-gradient(90deg,#4f46e5,#7c3aed 50%,#a855f7)";
+  const headerIconBg = isDark
+    ? "rgba(99,102,241,0.18)"
+    : "rgba(99,102,241,0.10)";
 
   // Smart positioning — stay inside viewport
   const [pos, setPos] = useState({ x, y });
@@ -173,7 +192,6 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
       setLoadingId(actionId);
       setResult(null);
       setError(null);
-
       try {
         const response = await fetch(
           "https://api.groq.com/openai/v1/chat/completions",
@@ -201,17 +219,14 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
             }),
           },
         );
-
         if (!response.ok) {
           const err = await response.json().catch(() => ({}));
           throw new Error(
             err?.error?.message || `API error ${response.status}`,
           );
         }
-
         const data = await response.json();
-        const text = data?.choices?.[0]?.message?.content?.trim() || "";
-        setResult(text);
+        setResult(data?.choices?.[0]?.message?.content?.trim() || "");
       } catch (err: any) {
         setError(err.message || "Something went wrong.");
       } finally {
@@ -241,7 +256,6 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
   const handleApply = () => {
     if (!result) return;
     if (elementType === "text") {
-      // For rich text: wrap in simple HTML
       const html = result
         .split("\n")
         .filter(Boolean)
@@ -293,19 +307,20 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <div
             style={{
-              width: 22,
-              height: 22,
-              borderRadius: 6,
-              fontSize: 12,
-              background: isDark
-                ? "rgba(99,102,241,0.2)"
-                : "rgba(99,102,241,0.1)",
+              width: 24,
+              height: 24,
+              borderRadius: 7,
+              background: headerIconBg,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            🤖
+            <Bot
+              size={13}
+              strokeWidth={2}
+              style={{ color: isDark ? "#a5b4fc" : "#4f46e5" }}
+            />
           </div>
           <div>
             <div
@@ -325,7 +340,7 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
                 fontFamily: "system-ui,sans-serif",
               }}
             >
-              Powered by Groq
+              Powered by YIO
             </div>
           </div>
         </div>
@@ -339,13 +354,23 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
             background: "transparent",
             cursor: "pointer",
             color: subColor,
-            fontSize: 12,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            transition: "all .12s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = isDark
+              ? "rgba(239,68,68,0.15)"
+              : "#fee2e2";
+            e.currentTarget.style.color = "#ef4444";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = subColor;
           }}
         >
-          ✕
+          <X size={12} strokeWidth={2.5} />
         </button>
       </div>
 
@@ -387,13 +412,22 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
-                  gap: 8,
+                  gap: 7,
                   color: subColor,
                   fontSize: 11,
                   fontFamily: "system-ui,sans-serif",
+                  transition: "all .1s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = itemHoverBg;
+                  e.currentTarget.style.color = itemHoverColor;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.color = subColor;
                 }}
               >
-                ← Back
+                <ArrowLeft size={12} strokeWidth={2} /> Back
               </button>
               {LANGUAGES.map((lang) => (
                 <button
@@ -423,7 +457,8 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
                     e.currentTarget.style.color = itemColor;
                   }}
                 >
-                  🌐 {lang}
+                  <Globe size={12} strokeWidth={2} style={{ flexShrink: 0 }} />{" "}
+                  {lang}
                 </button>
               ))}
             </>
@@ -469,7 +504,7 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
                         alignItems: "center",
                         gap: 8,
                         color: isLoading ? itemHoverColor : itemColor,
-                        opacity: loading && !isLoading ? 0.5 : 1,
+                        opacity: loading && !isLoading ? 0.45 : 1,
                         fontSize: 12,
                         fontFamily: "system-ui,sans-serif",
                         transition: "all .1s",
@@ -487,10 +522,14 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
                         }
                       }}
                     >
+                      {/* Icon slot */}
                       <span
                         style={{
                           width: 16,
-                          textAlign: "center",
+                          height: 16,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
                           flexShrink: 0,
                         }}
                       >
@@ -517,9 +556,23 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
                             marginLeft: "auto",
                             color: subColor,
                             fontSize: 10,
+                            display: "flex",
+                            alignItems: "center",
                           }}
                         >
-                          ›
+                          <svg
+                            width="8"
+                            height="12"
+                            viewBox="0 0 8 12"
+                            fill="none"
+                          >
+                            <path
+                              d="M1 1l6 5-6 5"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                            />
+                          </svg>
                         </span>
                       )}
                     </button>
@@ -556,11 +609,7 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
                 AI Result
               </div>
               <div
-                style={{
-                  flex: 1,
-                  overflowY: "auto",
-                  padding: "0 12px 8px",
-                }}
+                style={{ flex: 1, overflowY: "auto", padding: "0 12px 8px" }}
               >
                 <div
                   style={{
@@ -600,6 +649,15 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
                     fontWeight: 600,
                     cursor: "pointer",
                     fontFamily: "system-ui,sans-serif",
+                    transition: "all .12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = isDark
+                      ? "rgba(255,255,255,0.05)"
+                      : "#f8fafc";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
                   }}
                 >
                   Discard
@@ -626,21 +684,22 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 5,
+                    transition: "all .12s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.boxShadow = isDark
+                      ? "0 4px 14px rgba(99,102,241,0.55)"
+                      : "0 4px 12px rgba(124,58,237,0.4)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = isDark
+                      ? "0 2px 8px rgba(99,102,241,0.4)"
+                      : "0 2px 6px rgba(124,58,237,0.3)";
                   }}
                 >
-                  <svg
-                    width="11"
-                    height="11"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                  Apply
+                  <Check size={11} strokeWidth={3} /> Apply
                 </button>
               </div>
             </div>
@@ -658,15 +717,31 @@ const AITextMenu: React.FC<AITextMenuProps> = ({
             color: isDark ? "#fca5a5" : "#dc2626",
             fontSize: 11,
             fontFamily: "system-ui,sans-serif",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
           }}
         >
-          ⚠️ {error}
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          {error}
         </div>
       )}
 
       <style>{`
-        @keyframes aitm    { from{opacity:0;transform:scale(0.92) translateY(6px)} to{opacity:1;transform:scale(1) translateY(0)} }
-        @keyframes aispin  { to{transform:rotate(360deg)} }
+        @keyframes aitm   { from{opacity:0;transform:scale(0.92) translateY(6px)} to{opacity:1;transform:scale(1) translateY(0)} }
+        @keyframes aispin { to{transform:rotate(360deg)} }
       `}</style>
     </div>
   );

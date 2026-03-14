@@ -5,7 +5,6 @@ import { Transformer, Rect } from "react-konva";
 import Konva from "konva";
 import { ShapeProps, getShiftKey, COLORS } from "./shared";
 import QuillEditorModal from "../QuillEditorModal";
-import AITextMenu from "../AiTextMenu";
 
 const MIN_W = 60;
 const MIN_H = 28;
@@ -23,7 +22,6 @@ const TextShape: React.FC<ShapeProps> = ({
   const rectRef = useRef<Konva.Rect>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [aiMenu, setAiMenu] = useState<{ x: number; y: number } | null>(null);
   const lastClickTimeRef = useRef(0);
 
   const elW = Math.max(MIN_W, element.width || MIN_W);
@@ -68,7 +66,6 @@ const TextShape: React.FC<ShapeProps> = ({
       if (isDoubleClick) {
         e.evt.preventDefault();
         e.evt.stopPropagation();
-        setAiMenu(null);
         setIsEditing(true);
         onEditingChange?.(true);
         return;
@@ -78,15 +75,27 @@ const TextShape: React.FC<ShapeProps> = ({
     [element.id, onSelect, onEditingChange],
   );
 
-  // Right-click → AI menu
+  // ✅ Right-click → CustomEvent fire karo (AITextMenu Canvas DOM mein hai, Konva mein nahi)
   const handleContextMenu = useCallback(
     (e: Konva.KonvaEventObject<PointerEvent>) => {
       e.evt.preventDefault();
       e.evt.stopPropagation();
       onSelect(element.id, false);
-      setAiMenu({ x: e.evt.clientX, y: e.evt.clientY });
+      const plainText =
+        element.text || element.htmlText?.replace(/<[^>]+>/g, "") || "";
+      window.dispatchEvent(
+        new CustomEvent("wb_ai_text_menu", {
+          detail: {
+            x: e.evt.clientX,
+            y: e.evt.clientY,
+            elementId: element.id,
+            text: plainText,
+            elementType: "text",
+          },
+        }),
+      );
     },
-    [element.id, onSelect],
+    [element.id, element.text, element.htmlText, onSelect],
   );
 
   const handleTransformEnd = useCallback(
@@ -116,10 +125,6 @@ const TextShape: React.FC<ShapeProps> = ({
     },
     [element.id, element.fontSize, elW, elH, onTransformEnd],
   );
-
-  // Plain text from htmlText
-  const plainText =
-    element.text || element.htmlText?.replace(/<[^>]+>/g, "") || "";
 
   return (
     <>
@@ -195,24 +200,6 @@ const TextShape: React.FC<ShapeProps> = ({
           initialHtml={element.htmlText || ""}
           onSave={finishEditing}
           onClose={cancelEditing}
-        />
-      )}
-
-      {aiMenu && (
-        <AITextMenu
-          x={aiMenu.x}
-          y={aiMenu.y}
-          currentText={plainText}
-          elementType="text"
-          onApply={(newText, newHtml) => {
-            onTransformEnd(element.id, {
-              text: newText,
-              htmlText:
-                newHtml ||
-                `<p><span style="color:#ffffff">${newText}</span></p>`,
-            });
-          }}
-          onClose={() => setAiMenu(null)}
         />
       )}
     </>

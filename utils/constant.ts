@@ -109,11 +109,24 @@ export const COLORS = {
 };
 
 export const STICKY_NOTE_COLORS = [
-  { fill: "#fef3c7", stroke: "#fcd34d", name: "Yellow" },
+  // Light
+  { fill: "#fef3c7", stroke: "#fcd34d", name: "Amber" },
   { fill: "#dbeafe", stroke: "#93c5fd", name: "Blue" },
   { fill: "#fce7f3", stroke: "#f9a8d4", name: "Pink" },
   { fill: "#d1fae5", stroke: "#6ee7b7", name: "Green" },
   { fill: "#e9d5ff", stroke: "#c084fc", name: "Purple" },
+  { fill: "#ffedd5", stroke: "#fdba74", name: "Orange" },
+  { fill: "#cffafe", stroke: "#67e8f9", name: "Cyan" },
+  { fill: "#fef9c3", stroke: "#fde047", name: "Yellow" },
+  // Dark
+  { fill: "#78350f", stroke: "#d97706", name: "Amber Dark" },
+  { fill: "#1e3a5f", stroke: "#3b82f6", name: "Blue Dark" },
+  { fill: "#14532d", stroke: "#22c55e", name: "Green Dark" },
+  { fill: "#831843", stroke: "#ec4899", name: "Pink Dark" },
+  { fill: "#3b0764", stroke: "#a855f7", name: "Purple Dark" },
+  { fill: "#7c2d12", stroke: "#f97316", name: "Orange Dark" },
+  { fill: "#164e63", stroke: "#06b6d4", name: "Cyan Dark" },
+  { fill: "#713f12", stroke: "#eab308", name: "Yellow Dark" },
 ];
 export function getStickyNoteStrokeColor(fillColor: string): string {
   const color = STICKY_NOTE_COLORS.find((c) => c.fill === fillColor);

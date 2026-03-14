@@ -3,6 +3,13 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import ReactDOM from "react-dom";
 import { useTheme } from "../store/useTheme";
+import {
+  GitFork,
+  Network,
+  Building2,
+  CalendarClock,
+  MousePointerClick,
+} from "lucide-react";
 
 interface DiagramNode {
   id: string;
@@ -38,31 +45,26 @@ const DIAGRAM_TYPES = [
   {
     id: "flowchart",
     label: "Flowchart",
-    icon: "🔄",
     desc: "Process steps with decisions",
   },
   {
     id: "mindmap",
     label: "Mind Map",
-    icon: "🧠",
     desc: "Central idea with branches",
   },
   {
     id: "orgchart",
     label: "Org Chart",
-    icon: "🏢",
     desc: "Hierarchy / team structure",
   },
   {
     id: "timeline",
     label: "Timeline",
-    icon: "📅",
     desc: "Sequential events in order",
   },
   {
     id: "userflow",
     label: "User Flow",
-    icon: "👤",
     desc: "App screens & navigation",
   },
 ];
@@ -511,7 +513,22 @@ Generate 5-10 nodes with meaningful connections. Make it realistic and useful.`;
                   : "0 2px 8px rgba(37,99,235,0.2)",
               }}
             >
-              📊
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={isDark ? "#60a5fa" : "#2563eb"}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="3" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" />
+                <path d="M17.5 17.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0" />
+                <path d="M6.5 10v4M17.5 10v5M6.5 14h11" />
+              </svg>
             </div>
             <div>
               <div
@@ -533,7 +550,7 @@ Generate 5-10 nodes with meaningful connections. Make it realistic and useful.`;
                   fontFamily: "system-ui,sans-serif",
                 }}
               >
-                Powered by Groq • Generates real shapes & arrows on canvas
+                Powered by YIO • Generates real shapes & arrows on canvas
               </div>
             </div>
           </div>
@@ -644,7 +661,32 @@ Generate 5-10 nodes with meaningful connections. Make it realistic and useful.`;
                         transition: "all .15s",
                       }}
                     >
-                      <span style={{ fontSize: 20 }}>{dt.icon}</span>
+                      <span
+                        style={{
+                          fontSize: 20,
+                          color: isDark ? "#ffffff" : titleColor,
+                        }}
+                      >
+                        {dt.id === "flowchart" && (
+                          <GitFork
+                            size={18}
+                            strokeWidth={2}
+                            style={{ transform: "rotate(180deg)" }}
+                          />
+                        )}
+                        {dt.id === "mindmap" && (
+                          <Network size={18} strokeWidth={2} />
+                        )}
+                        {dt.id === "orgchart" && (
+                          <Building2 size={18} strokeWidth={2} />
+                        )}
+                        {dt.id === "timeline" && (
+                          <CalendarClock size={18} strokeWidth={2} />
+                        )}
+                        {dt.id === "userflow" && (
+                          <MousePointerClick size={18} strokeWidth={2} />
+                        )}
+                      </span>
                       <span
                         style={{
                           fontSize: 10,
@@ -768,7 +810,22 @@ Generate 5-10 nodes with meaningful connections. Make it realistic and useful.`;
                     fontSize: 28,
                   }}
                 >
-                  📊
+                  <svg
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={isDark ? "#60a5fa" : "#2563eb"}
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="3" y="3" width="7" height="7" rx="1" />
+                    <rect x="14" y="3" width="7" height="7" rx="1" />
+                    <rect x="3" y="14" width="7" height="7" rx="1" />
+                    <path d="M17.5 17.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0" />
+                    <path d="M6.5 10v4M17.5 10v5M6.5 14h11" />
+                  </svg>
                 </div>
               </div>
               <div style={{ textAlign: "center" }}>
@@ -790,7 +847,7 @@ Generate 5-10 nodes with meaningful connections. Make it realistic and useful.`;
                     fontFamily: "system-ui,sans-serif",
                   }}
                 >
-                  Groq is generating a{" "}
+                  YIO is generating a{" "}
                   {DIAGRAM_TYPES.find((d) => d.id === diagramType)?.label}
                 </div>
               </div>
@@ -950,7 +1007,7 @@ Generate 5-10 nodes with meaningful connections. Make it realistic and useful.`;
             }}
           >
             {phase === "input" && "Shapes & arrows will be placed on canvas"}
-            {phase === "generating" && "⏳ Groq is thinking…"}
+            {phase === "generating" && "⏳ YIO is thinking…"}
             {phase === "result" && `✅ ${preview?.nodes.length} shapes ready`}
           </span>
           <div style={{ display: "flex", gap: 8 }}>
@@ -1002,7 +1059,25 @@ Generate 5-10 nodes with meaningful connections. Make it realistic and useful.`;
                   fontFamily: "system-ui,sans-serif",
                 }}
               >
-                <span>📊</span> Generate Diagram
+                <span>
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={isDark ? "#b1b6bbff" : "#c3c5caff"}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="3" y="3" width="7" height="7" rx="1" />
+                    <rect x="14" y="3" width="7" height="7" rx="1" />
+                    <rect x="3" y="14" width="7" height="7" rx="1" />
+                    <path d="M17.5 17.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0" />
+                    <path d="M6.5 10v4M17.5 10v5M6.5 14h11" />
+                  </svg>
+                </span>{" "}
+                Generate Diagram
               </button>
             ) : (
               <button

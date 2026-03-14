@@ -17,6 +17,8 @@ import { useStore, WhiteboardElement, ToolType } from "../store/useStore";
 import Toolbar from "./Toolbar";
 import { socket } from "@/socket/connection";
 import QuillEditorModal from "./QuillEditorModal";
+import AITextMenu from "./AiTextMenu";
+
 import {
   RectShape,
   CircleShape,
@@ -1258,12 +1260,18 @@ export default function Canvas({ id }: { id: string }) {
     width: number;
     height: number;
   } | null>(null);
+  const [aiTextMenu, setAiTextMenu] = useState<{
+    x: number;
+    y: number;
+    elementId: string;
+    text: string;
+    elementType: "text" | "sticky";
+  } | null>(null);
   const [canvasBg, setCanvasBg] = useState<BgColor>(
     () => getCanvasBgColors(false)[0],
   );
 
   useEffect(() => {
-    if (prevIsDarkRef.current === isDark) return;
     prevIsDarkRef.current = isDark;
 
     // 1. Switch canvas background
@@ -1315,6 +1323,39 @@ export default function Canvas({ id }: { id: string }) {
         }
       }
 
+      const STICKY_LIGHT = [
+        "#fef3c7",
+        "#dbeafe",
+        "#fce7f3",
+        "#d1fae5",
+        "#e9d5ff",
+        "#fef9c3",
+        "#cffafe",
+        "#ffedd5",
+      ];
+      const STICKY_DARK = [
+        "#78350f",
+        "#1e3a5f",
+        "#831843",
+        "#14532d",
+        "#3b0764",
+        "#713f12",
+        "#164e63",
+        "#7c2d12",
+      ];
+
+      if (el.type === "sticky" && el.fillColor) {
+        const lightIdx = STICKY_LIGHT.indexOf(el.fillColor);
+        const darkIdx = STICKY_DARK.indexOf(el.fillColor);
+        if (isDark && lightIdx !== -1) {
+          attrs.fillColor = STICKY_DARK[lightIdx];
+          attrs.strokeColor = undefined;
+        } else if (!isDark && darkIdx !== -1) {
+          attrs.fillColor = STICKY_LIGHT[darkIdx];
+          attrs.strokeColor = undefined;
+        }
+      }
+
       if (Object.keys(attrs).length > 0) {
         updateElement(el.id, attrs);
       }
@@ -1362,6 +1403,42 @@ export default function Canvas({ id }: { id: string }) {
       for (const item of data) map.set(item.id, item);
       const deduped = Array.from(map.values());
       useStore.getState().setElements(deduped);
+
+      // Remap sticky colors on load based on current theme
+      if (isDark) {
+        const STICKY_LIGHT = [
+          "#fef3c7",
+          "#dbeafe",
+          "#fce7f3",
+          "#d1fae5",
+          "#e9d5ff",
+          "#fef9c3",
+          "#cffafe",
+          "#ffedd5",
+        ];
+        const STICKY_DARK = [
+          "#78350f",
+          "#1e3a5f",
+          "#831843",
+          "#14532d",
+          "#3b0764",
+          "#713f12",
+          "#164e63",
+          "#7c2d12",
+        ];
+        for (const el of deduped) {
+          if (el.type === "sticky" && el.fillColor) {
+            const lightIdx = STICKY_LIGHT.indexOf(el.fillColor);
+            if (lightIdx !== -1) {
+              useStore.getState().updateElement(el.id, {
+                fillColor: STICKY_DARK[lightIdx],
+                strokeColor: undefined,
+              });
+            }
+          }
+        }
+      }
+
       lastSnapshotRef.current.clear();
       for (const el of deduped)
         lastSnapshotRef.current.set(el.id, JSON.stringify(el));
@@ -1562,7 +1639,7 @@ export default function Canvas({ id }: { id: string }) {
           height: CARD_H,
           text: `${idea.title}\n\n${idea.body}`,
           fillColor: idea.color,
-          strokeColor: idea.color,
+          strokeColor: undefined,
           fontSize: 13,
         } as WhiteboardElement;
       });
@@ -1693,6 +1770,15 @@ export default function Canvas({ id }: { id: string }) {
     window.addEventListener("wb_diagram_insert", handler);
     return () => window.removeEventListener("wb_diagram_insert", handler);
   }, [addElement, selectElements, setTool, flushChanges, position, scale]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { x, y, elementId, text, elementType } = (e as CustomEvent).detail;
+      setAiTextMenu({ x, y, elementId, text, elementType });
+    };
+    window.addEventListener("wb_ai_text_menu", handler);
+    return () => window.removeEventListener("wb_ai_text_menu", handler);
+  }, []);
 
   const isInitialLoadRef = useRef(true);
 
@@ -2020,7 +2106,7 @@ export default function Canvas({ id }: { id: string }) {
           height: 150,
           text: "Note",
           fillColor: stickyNoteColor,
-          strokeColor: getStickyNoteStrokeColor(stickyNoteColor),
+          strokeColor: undefined,
         } as WhiteboardElement;
         addElement(newEl);
         selectElement(newEl.id);
@@ -2776,8 +2862,7 @@ export default function Canvas({ id }: { id: string }) {
                 backdropFilter: "blur(8px)",
               }}
             >
-              {(autoSaveStatus === "saving" ||
-                autoSaveStatus === "pending") && (
+              {autoSaveStatus === "saving" && (
                 <div
                   style={{
                     width: 14,
@@ -2865,6 +2950,7 @@ export default function Canvas({ id }: { id: string }) {
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onWheel={handleWheel}
+          onContextMenu={(e) => e.evt.preventDefault()}
         >
           <Layer ref={layerRef}>
             {elements.map((element) => {
@@ -3176,6 +3262,30 @@ export default function Canvas({ id }: { id: string }) {
               />
             ) : null;
           })()}
+
+        {/* AI Text Menu */}
+        {aiTextMenu && (
+          <AITextMenu
+            x={aiTextMenu.x}
+            y={aiTextMenu.y}
+            currentText={aiTextMenu.text}
+            elementType={aiTextMenu.elementType}
+            onApply={(newText, newHtml) => {
+              if (aiTextMenu.elementType === "text") {
+                updateElement(aiTextMenu.elementId, {
+                  text: newText,
+                  htmlText:
+                    newHtml ||
+                    `<p><span style="color:#ffffff">${newText}</span></p>`,
+                });
+              } else {
+                updateElement(aiTextMenu.elementId, { text: newText });
+              }
+              void flushChanges(false);
+            }}
+            onClose={() => setAiTextMenu(null)}
+          />
+        )}
 
         {/* YIO logo */}
         <div

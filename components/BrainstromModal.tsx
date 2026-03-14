@@ -271,7 +271,19 @@ Respond with ONLY the JSON array, starting with [ and ending with ]`;
                   : "0 2px 8px rgba(139,92,246,0.2)",
               }}
             >
-              🧠
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={isDark ? "#c084fc" : "#9333ea"}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 3l1.9 5.8H20l-4.9 3.6 1.9 5.8L12 14.6l-5 3.6 1.9-5.8L4 8.8h6.1z" />
+                <path d="M5 3v4M3 5h4M19 17v4M17 19h4" />
+              </svg>
             </div>
             <div>
               <div
@@ -293,7 +305,7 @@ Respond with ONLY the JSON array, starting with [ and ending with ]`;
                   fontFamily: "system-ui,sans-serif",
                 }}
               >
-                Powered by Gemini • Generates sticky notes on canvas
+                Powered by YIO • Generates sticky notes on canvas
               </div>
             </div>
           </div>
@@ -558,7 +570,19 @@ Respond with ONLY the JSON array, starting with [ and ending with ]`;
                     fontSize: 28,
                   }}
                 >
-                  🧠
+                  <svg
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={isDark ? "#c084fc" : "#9333ea"}
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 3l1.9 5.8H20l-4.9 3.6 1.9 5.8L12 14.6l-5 3.6 1.9-5.8L4 8.8h6.1z" />
+                    <path d="M5 3v4M3 5h4M19 17v4M17 19h4" />
+                  </svg>
                 </div>
               </div>
 
@@ -817,7 +841,22 @@ Respond with ONLY the JSON array, starting with [ and ending with ]`;
                   fontFamily: "system-ui,sans-serif",
                 }}
               >
-                <span>🧠</span> Generate Ideas
+                <span>
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={isDark ? "#beb4c7ff" : "#c8c2ceff"}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 3l1.9 5.8H20l-4.9 3.6 1.9 5.8L12 14.6l-5 3.6 1.9-5.8L4 8.8h6.1z" />
+                    <path d="M5 3v4M3 5h4M19 17v4M17 19h4" />
+                  </svg>
+                </span>{" "}
+                Generate Ideas
               </button>
             ) : (
               <button
