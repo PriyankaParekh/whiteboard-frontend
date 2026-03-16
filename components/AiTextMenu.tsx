@@ -29,7 +29,7 @@ interface AITextMenuProps {
   onClose: () => void;
 }
 
-const GROQ_API_KEY = "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";
+const GROQ_API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
 
 const AI_ACTIONS = [
   {

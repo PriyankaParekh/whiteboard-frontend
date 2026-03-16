@@ -15,8 +15,7 @@ interface BrainstormModalProps {
   onClose: () => void;
 }
 
-const GEMINI_API_KEY =
-  "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";
+const GEMINI_API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
 
 const STICKY_COLORS = [
   "#fef3c7", // amber

@@ -542,6 +542,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           Controls
         </div>
         {[
+          ["AI", "Right click on text and sticky notes"],
           ["Select", "Click shapes"],
           ["Multi-select", "Shift+Click / Drag"],
           ["Pan", "Ctrl/Cmd + Drag"],
